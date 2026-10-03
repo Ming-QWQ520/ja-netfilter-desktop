@@ -29,14 +29,11 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            // Initialise the user workspace (workdir) where the bundled
-            // lib.jar / plugins / configs / vmoptions are mirrored so that
-            // the user can edit them without touching the read-only app bundle.
-            let workdir = workspace::init_workdir(app.handle())?;
-            log::info!("workspace ready at {}", workdir.display());
+            // 直接使用项目自带的 resources 目录，不复制到用户工作区。
+            let resource_root = workspace::init_resource_root(app.handle())?;
+            log::info!("使用项目自带资源目录：{}", resource_root.display());
 
-            // Hold the workdir in app state so commands can grab it cheaply.
-            app.manage(workspace::WorkspaceState::new(workdir));
+            app.manage(workspace::WorkspaceState::new(resource_root));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

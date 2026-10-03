@@ -32,8 +32,8 @@ export const useProductsStore = defineStore("products", () => {
     }
   }
 
-  async function install(id: string) {
-    await api.installProduct(id);
+  async function install(id: string, licenseName?: string) {
+    await api.installProduct(id, licenseName);
     await refreshOne(id);
   }
 
@@ -42,8 +42,8 @@ export const useProductsStore = defineStore("products", () => {
     await refreshOne(id);
   }
 
-  async function installAll() {
-    await api.installAllProducts();
+  async function installAll(licenseName?: string) {
+    await api.installAllProducts(licenseName);
     await refreshAll();
   }
 
@@ -52,5 +52,15 @@ export const useProductsStore = defineStore("products", () => {
     await refreshAll();
   }
 
-  return { items, loading, lastError, refreshAll, refreshOne, install, uninstall, installAll, uninstallAll };
+  return {
+    items,
+    loading,
+    lastError,
+    refreshAll,
+    refreshOne,
+    install,
+    uninstall,
+    installAll,
+    uninstallAll,
+  };
 });

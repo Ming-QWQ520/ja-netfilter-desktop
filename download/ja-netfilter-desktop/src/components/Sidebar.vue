@@ -8,19 +8,18 @@ const route = useRoute();
 const settings = useSettingsStore();
 
 const nav = [
-  { to: "/", label: "Dashboard", icon: "grid" },
-  { to: "/configs", label: "Configs", icon: "sliders" },
+  { to: "/", label: "总览", icon: "grid" },
+  { to: "/configs", label: "插件配置", icon: "sliders" },
   { to: "/vmoptions", label: "vmoptions", icon: "code" },
-  { to: "/plugins", label: "Plugins", icon: "puzzle" },
-  { to: "/logs", label: "Logs", icon: "terminal" },
-  { to: "/settings", label: "Settings", icon: "cog" },
+  { to: "/plugins", label: "插件", icon: "puzzle" },
+  { to: "/logs", label: "日志", icon: "terminal" },
+  { to: "/settings", label: "设置", icon: "cog" },
 ];
 
-const version = computed(() => settings.info?.app_version ?? "0.0.0");
+const version = computed(() => settings.info?.app_version ?? "0.1.0");
 const jarOk = computed(() => settings.info?.jar_exists ?? false);
 
 function iconSvg(name: string) {
-  // Tiny inline icon set so we don't pull an icon dependency.
   switch (name) {
     case "grid":
       return `<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>`;
@@ -51,7 +50,7 @@ function isActive(to: string) {
       <div class="brand-mark">ja</div>
       <div class="brand-text">
         <div class="brand-name">ja-netfilter</div>
-        <div class="brand-sub">Desktop · v{{ version }}</div>
+        <div class="brand-sub">桌面版 · v{{ version }}</div>
       </div>
     </div>
 
@@ -72,12 +71,12 @@ function isActive(to: string) {
       <div class="jar-status">
         <span class="dot" :class="jarOk ? 'ok' : 'error'" />
         <span class="jar-status-text">
-          {{ jarOk ? "lib.jar ready" : "lib.jar missing" }}
+          {{ jarOk ? "lib.jar 已就绪" : "lib.jar 缺失" }}
         </span>
       </div>
       <p class="footer-note">
-        Agent framework for JetBrains IDEs.<br />
-        Use only with software you are licensed to run.
+        JetBrains IDE 的 Java agent 框架。<br />
+        请仅在您拥有合法授权的软件上使用。
       </p>
     </div>
   </aside>

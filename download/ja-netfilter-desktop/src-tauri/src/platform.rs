@@ -50,8 +50,8 @@ impl Os {
 /// product. The discovery order matches the upstream install scripts:
 ///   1. `<PRODUCT>_VM_OPTIONS` env var (if set explicitly)
 ///   2. Per-user default vmoptions path under the JetBrains config dir
-///   3. The workspace template shipped with the app (fall-back)
-pub fn find_vmoptions_path(product_id: &str, workdir: &Path) -> Option<PathBuf> {
+///   3. The bundled template shipped with the app (under `resources/vmoptions`)
+pub fn find_vmoptions_path(product_id: &str, resource_root: &Path) -> Option<PathBuf> {
     let env_key = format!("{}_VM_OPTIONS", product_id.to_uppercase());
     if let Ok(val) = std::env::var(&env_key) {
         let p = PathBuf::from(val);
@@ -66,7 +66,9 @@ pub fn find_vmoptions_path(product_id: &str, workdir: &Path) -> Option<PathBuf> 
         }
     }
 
-    let template = workdir.join("vmoptions").join(format!("{}.vmoptions", product_id));
+    let template = resource_root
+        .join("vmoptions")
+        .join(format!("{}.vmoptions", product_id));
     if template.exists() {
         return Some(template);
     }

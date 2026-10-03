@@ -41,7 +41,7 @@ async function save() {
   try {
     await api.writeVmoptions(selectedId.value, content.value);
     originalContent.value = content.value;
-    toast.success(`Saved ${selectedId.value}.vmoptions`);
+    toast.success(`已保存 ${selectedId.value}.vmoptions`);
   } catch (e: any) {
     toast.error(String(e));
   } finally {
@@ -55,11 +55,11 @@ function revert() {
 
 async function resetTemplate() {
   if (!selectedId.value) return;
-  if (!confirm(`Reset ${selectedId.value}.vmoptions to bundled template?`)) return;
+  if (!confirm(`确定要将 ${selectedId.value}.vmoptions 重置为项目自带模板吗？`)) return;
   try {
     await api.resetVmoptions(selectedId.value);
     await loadContent(selectedId.value);
-    toast.success("Reset to template.");
+    toast.success("已重置为项目模板。");
   } catch (e: any) {
     toast.error(String(e));
   }
@@ -82,13 +82,13 @@ onMounted(async () => {
     <header class="content-header">
       <div>
         <h2>vmoptions</h2>
-        <p class="subtitle">Inspect or edit the per-product vmoptions files served from the workspace.</p>
+        <p class="subtitle">查看或编辑项目自带的各产品 vmoptions 模板。</p>
       </div>
       <div class="toolbar">
-        <button class="ghost" :disabled="!dirty" @click="revert">Revert</button>
-        <button class="danger" :disabled="!selectedId" @click="resetTemplate">Reset to template</button>
+        <button class="ghost" :disabled="!dirty" @click="revert">撤销</button>
+        <button class="danger" :disabled="!selectedId" @click="resetTemplate">重置为模板</button>
         <button class="primary" :disabled="!dirty || saving" @click="save">
-          {{ saving ? "Saving…" : "Save" }}
+          {{ saving ? "保存中…" : "保存" }}
         </button>
       </div>
     </header>
@@ -111,14 +111,14 @@ onMounted(async () => {
       <div class="vm-editor">
         <div v-if="selectedId" class="editor-meta">
           <span class="badge info">{{ selectedId }}.vmoptions</span>
-          <span v-if="dirty" class="badge warn">unsaved</span>
-          <span v-else class="badge ok">synced</span>
+          <span v-if="dirty" class="badge warn">未保存</span>
+          <span v-else class="badge ok">已同步</span>
         </div>
         <textarea
           v-model="content"
           class="editor-text"
           spellcheck="false"
-          :placeholder="selectedId ? `Edit ${selectedId}.vmoptions…` : 'Select a product'"
+          :placeholder="selectedId ? `编辑 ${selectedId}.vmoptions…` : '请选择一个产品'"
         />
       </div>
     </div>

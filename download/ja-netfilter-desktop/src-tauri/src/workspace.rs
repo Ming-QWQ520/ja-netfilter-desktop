@@ -1,37 +1,25 @@
-//! Per-user workspace management.
+//! 资源定位（直接读取项目自带 resources 目录，不再镜像到用户工作区）。
 //!
-//! ja-netfilter ships with a set of files (lib.jar, plugins, configs,
-//! vmoptions) that the bundled app exposes as Tauri resources. Because the
-//! install location is itself writable (the user edits vmoptions, swaps
-//! lib.jar for a custom build, etc.), we mirror those resources into a
-//! writable per-user directory on first launch and treat *that* as the
-//! authoritative source for all subsequent reads/writes.
+//! 应用启动时不再将 `lib.jar` / `plugins/` / `config/` / `vmoptions/` 复制到
+//! 用户配置目录。所有读写都直接作用于项目自带的 `resources/` 目录。
+//!
+//! 这意味着：
+//!   - `lib.jar`、`plugins/*.jar`、`config/*.conf`、`vmoptions/*.vmoptions`
+//!     始终是应用 bundle 内的同一路径。
+//!   - 任何用户编辑都直接写入这些文件，下次升级会被覆盖（与原版 install.sh
+//!     行为一致：install.sh 同样在分发目录原地修改 vmoptions）。
+//!   - 检测产品时，工作区模板路径就是 `<bundle>/resources/vmoptions/<id>.vmoptions`。
+//!
+//! 此模块只负责把 Tauri 的 resource 解析为文件系统路径。
 
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 use tauri::{AppHandle, Manager};
 
-/// Sub-directory name used inside the user-config dir for the workspace.
-pub const WORKDIR_NAME: &str = "ja-netfilter-desktop";
-
-/// Map of bundled resource path -> relative target inside the workdir.
-const RESOURCE_FILES: &[(&str, &str)] = &[
-    ("resources/lib.jar", "lib.jar"),
-    ("resources/config/dns.conf", "config/dns.conf"),
-    ("resources/config/power.conf", "config/power.conf"),
-    ("resources/config/url.conf", "config/url.conf"),
-    ("resources/plugins/dns.jar", "plugins/dns.jar"),
-    ("resources/plugins/hideme.jar", "plugins/hideme.jar"),
-    ("resources/plugins/power.jar", "plugins/power.jar"),
-    ("resources/plugins/url.jar", "plugins/url.jar"),
-];
-
-/// All known vmoptions product identifiers (matches the upstream install.sh).
+/// 所有已知的 JetBrains 产品 ID（与原版 install.sh 保持一致）。
 #[allow(dead_code)]
 pub static JB_PRODUCT_IDS: &[&str] = &[
     "idea",
@@ -54,8 +42,8 @@ pub static JB_PRODUCT_IDS: &[&str] = &[
     "devecostudio",
 ];
 
-/// Display names shown in the GUI for each product id.
-pub static JB_PRODUCT_LABELS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::new(|| {
+/// GUI 中展示的产品友好名称。
+pub fn product_labels() -> Vec<(&'static str, &'static str)> {
     vec![
         ("idea", "IntelliJ IDEA"),
         ("clion", "CLion"),
@@ -76,122 +64,59 @@ pub static JB_PRODUCT_LABELS: Lazy<Vec<(&'static str, &'static str)>> = Lazy::ne
         ("studio", "Android Studio"),
         ("devecostudio", "DevEco Studio"),
     ]
-});
+}
 
-/// Process-wide hold on the workdir path so commands can read it cheaply.
+/// 持有应用 resource_root 的路径（项目自带的 resources 目录）。
 #[derive(Clone)]
 pub struct WorkspaceState {
-    pub workdir: Arc<RwLock<PathBuf>>,
+    pub resource_root: Arc<RwLock<PathBuf>>,
 }
 
 impl WorkspaceState {
-    pub fn new(workdir: PathBuf) -> Self {
+    pub fn new(resource_root: PathBuf) -> Self {
         Self {
-            workdir: Arc::new(RwLock::new(workdir)),
+            resource_root: Arc::new(RwLock::new(resource_root)),
         }
     }
 
     pub fn get(&self) -> PathBuf {
-        self.workdir.read().clone()
+        self.resource_root.read().clone()
     }
 
     #[allow(dead_code)]
     pub fn set(&self, path: PathBuf) {
-        *self.workdir.write() = path;
+        *self.resource_root.write() = path;
     }
 }
 
-/// Resolve the per-user workspace directory and ensure it exists with all
-/// bundled resources mirrored into it. The path is:
-///   - Linux:   `$XDG_CONFIG_HOME/ja-netfilter-desktop` (or `~/.config/...`)
-///   - macOS:    `~/Library/Application Support/ja-netfilter-desktop`
-///   - Windows:  `%APPDATA%/ja-netfilter-desktop`
-pub fn init_workdir(app: &AppHandle) -> Result<PathBuf> {
-    let base = dirs::config_dir()
-        .context("could not resolve user config dir for the current platform")?;
-    let workdir = base.join(WORKDIR_NAME);
-    fs::create_dir_all(&workdir).with_context(|| {
-        format!(
-            "failed to create workspace at {}",
-            workdir.display()
-        )
-    })?;
-
-    mirror_resources(app, &workdir)?;
-    Ok(workdir)
-}
-
-/// Mirror every bundled resource file into the workspace. Existing files are
-/// preserved so user edits survive app upgrades; missing files are copied.
-fn mirror_resources(app: &AppHandle, workdir: &Path) -> Result<()> {
-    for (resource_rel, target_rel) in RESOURCE_FILES {
-        let target = workdir.join(target_rel);
-        if target.exists() {
-            continue;
-        }
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).ok();
-        }
-        if let Ok(resource_path) = app
-            .path()
-            .resolve(resource_rel, tauri::path::BaseDirectory::Resource)
-        {
-            if resource_path.exists() {
-                fs::copy(&resource_path, &target).with_context(|| {
-                    format!(
-                        "failed to copy bundled resource {} -> {}",
-                        resource_path.display(),
-                        target.display()
-                    )
-                })?;
-                continue;
-            }
-        }
-        log::warn!(
-            "bundled resource not found at build time: {} (target {})",
-            resource_rel,
-            target.display()
+/// 解析 Tauri 的 `resources/` 目录为文件系统路径。该目录在开发模式下
+/// 位于 `<repo>/src-tauri/resources/`，在打包后位于应用 bundle 内。
+pub fn init_resource_root(app: &AppHandle) -> Result<PathBuf> {
+    let resource_root = app
+        .path()
+        .resolve("resources", tauri::path::BaseDirectory::Resource)
+        .context("无法解析项目自带的 resources 目录")?;
+    if !resource_root.exists() {
+        anyhow::bail!(
+            "项目自带的 resources 目录不存在：{}",
+            resource_root.display()
         );
     }
-
-    // Mirror vmoptions templates — they are not pre-listed because there
-    // are many of them; iterate the resources/vmoptions dir at runtime.
-    if let Ok(vm_dir) = app
-        .path()
-        .resolve("resources/vmoptions", tauri::path::BaseDirectory::Resource)
-    {
-        if vm_dir.exists() {
-            let target_vm_dir = workdir.join("vmoptions");
-            fs::create_dir_all(&target_vm_dir)?;
-            if let Ok(entries) = fs::read_dir(&vm_dir) {
-                for entry in entries.flatten() {
-                    let src = entry.path();
-                    let name = entry.file_name();
-                    let dst = target_vm_dir.join(&name);
-                    if !dst.exists() {
-                        fs::copy(&src, &dst).ok();
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
+    log::info!("使用项目自带资源目录：{}", resource_root.display());
+    Ok(resource_root)
 }
 
-/// Return the workspace directory currently in use.
-#[allow(dead_code)]
-pub fn current_workdir(state: &WorkspaceState) -> PathBuf {
-    state.get()
-}
-
-/// Resolve a workspace-relative path safely (no escape via `..`).
-pub fn resolve_under_workdir(state: &WorkspaceState, rel: &str) -> Result<PathBuf> {
+/// 解析 resource_root 之下的相对路径，禁止 `..` 逃逸。
+pub fn resolve_under_root(state: &WorkspaceState, rel: &str) -> Result<PathBuf> {
     let root = state.get();
     let joined = root.join(rel);
-    let canonical = joined.canonicalize().unwrap_or_else(|_| joined.clone());
-    if !canonical.starts_with(&root) {
-        anyhow::bail!("path escapes the workspace: {}", rel);
+    // 不做 canonicalize —— resource_root 在某些平台（如 macOS .app bundle）
+    // 解析后包含 `/private/var/folders/...` 前缀，canonicalize 会引入额外
+    // 解析失败风险。我们直接做字符串前缀检查。
+    let joined_str = joined.to_string_lossy();
+    let root_str = root.to_string_lossy();
+    if !joined_str.starts_with(&*root_str) {
+        anyhow::bail!("路径越界：{}", rel);
     }
-    Ok(canonical)
+    Ok(joined)
 }

@@ -37,13 +37,13 @@ pub fn refresh_product_status(
     state: State<'_, WorkspaceState>,
     product_id: String,
 ) -> Result<ProductInfo, String> {
-    let workdir = state.get();
+    let resource_root = state.get();
     let name = products::list_known_products()
         .into_iter()
         .find(|(id, _)| *id == product_id)
         .map(|(_, n)| n)
         .unwrap_or(product_id.as_str());
-    Ok(products::detect_one(&product_id, name, &workdir))
+    Ok(products::detect_one(&product_id, name, &resource_root))
 }
 
 // -------- Install / Uninstall ----------------------------------------------
@@ -52,8 +52,10 @@ pub fn refresh_product_status(
 pub fn install_product(
     state: State<'_, WorkspaceState>,
     product_id: String,
+    license_name: Option<String>,
 ) -> Result<InstallResult, String> {
-    installer::install(&state, &product_id).map_err(|e| e.to_string())
+    installer::install(&state, &product_id, license_name.as_deref())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -67,10 +69,11 @@ pub fn uninstall_product(
 #[tauri::command]
 pub fn install_all_products(
     state: State<'_, WorkspaceState>,
+    license_name: Option<String>,
 ) -> Result<Vec<InstallResult>, String> {
     let mut results = Vec::new();
     for (id, _) in products::list_known_products() {
-        match installer::install(&state, id) {
+        match installer::install(&state, id, license_name.as_deref()) {
             Ok(r) => results.push(r),
             Err(e) => {
                 logger::append(
@@ -180,8 +183,8 @@ pub struct PluginJar {
 
 #[tauri::command]
 pub fn read_plugin_jars(state: State<'_, WorkspaceState>) -> Result<Vec<PluginJar>, String> {
-    let workdir = state.get();
-    let plugins_dir = workdir.join("plugins");
+    let resource_root = state.get();
+    let plugins_dir = resource_root.join("plugins");
     let mut out = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
         for entry in entries.flatten() {
@@ -210,11 +213,11 @@ pub fn get_workspace_info(
     state: State<'_, WorkspaceState>,
     app: AppHandle,
 ) -> Result<WorkspaceInfo, String> {
-    let workdir = state.get();
-    let jar_path = workdir.join("lib.jar");
-    let vmoptions_dir = workdir.join("vmoptions");
-    let config_dir = workdir.join("config");
-    let plugins_dir = workdir.join("plugins");
+    let resource_root = state.get();
+    let jar_path = resource_root.join("lib.jar");
+    let vmoptions_dir = resource_root.join("vmoptions");
+    let config_dir = resource_root.join("config");
+    let plugins_dir = resource_root.join("plugins");
 
     let mut plugin_jars = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
@@ -231,7 +234,7 @@ pub fn get_workspace_info(
     }
 
     Ok(WorkspaceInfo {
-        workdir: workdir.display().to_string(),
+        workdir: resource_root.display().to_string(),
         jar_path: jar_path.display().to_string(),
         jar_exists: jar_path.exists(),
         plugin_jars,

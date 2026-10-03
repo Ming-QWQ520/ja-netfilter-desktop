@@ -2,12 +2,14 @@
 import { ref } from "vue";
 
 import { useProductsStore } from "@/stores/products";
+import { useLicenseStore } from "@/stores/license";
 import { useToast } from "@/stores/toast";
 import type { ProductInfo, VmoptionsSource } from "@/types";
 
 const props = defineProps<{ product: ProductInfo }>();
 
 const store = useProductsStore();
+const license = useLicenseStore();
 const toast = useToast();
 
 const busy = ref(false);
@@ -16,10 +18,10 @@ const expanded = ref(false);
 async function install() {
   busy.value = true;
   try {
-    await store.install(props.product.id);
-    toast.success(`${props.product.name}: javaagent installed.`);
+    await store.install(props.product.id, license.name || undefined);
+    toast.success(`${props.product.name}：javaagent 已安装。`);
   } catch (e: any) {
-    toast.error(`${props.product.name}: ${e}`);
+    toast.error(`${props.product.name}：${e}`);
   } finally {
     busy.value = false;
   }
@@ -29,9 +31,9 @@ async function uninstall() {
   busy.value = true;
   try {
     await store.uninstall(props.product.id);
-    toast.success(`${props.product.name}: javaagent removed.`);
+    toast.success(`${props.product.name}：javaagent 已移除。`);
   } catch (e: any) {
-    toast.error(`${props.product.name}: ${e}`);
+    toast.error(`${props.product.name}：${e}`);
   } finally {
     busy.value = false;
   }
@@ -39,10 +41,10 @@ async function uninstall() {
 
 function sourceLabel(src: VmoptionsSource): string {
   return {
-    env: "Env var",
-    user: "User config",
-    template: "Template",
-    missing: "Missing",
+    env: "环境变量",
+    user: "用户配置",
+    template: "项目模板",
+    missing: "缺失",
   }[src];
 }
 
@@ -64,17 +66,17 @@ function sourceClass(src: VmoptionsSource): string {
         <span class="name">{{ product.name }}</span>
       </div>
       <span class="badge" :class="product.javaagent_installed ? 'ok' : ''">
-        {{ product.javaagent_installed ? "installed" : "not installed" }}
+        {{ product.javaagent_installed ? "已安装" : "未安装" }}
       </span>
     </header>
 
     <dl class="card-meta">
       <div>
-        <dt>id</dt>
+        <dt>标识</dt>
         <dd class="mono">{{ product.id }}</dd>
       </div>
       <div>
-        <dt>env</dt>
+        <dt>环境变量</dt>
         <dd class="mono">{{ product.env_var }}</dd>
       </div>
       <div>
@@ -86,7 +88,7 @@ function sourceClass(src: VmoptionsSource): string {
         </dd>
       </div>
       <div>
-        <dt>source</dt>
+        <dt>来源</dt>
         <dd>
           <span class="badge" :class="sourceClass(product.vmoptions_source)">
             {{ sourceLabel(product.vmoptions_source) }}
@@ -101,14 +103,14 @@ function sourceClass(src: VmoptionsSource): string {
 
     <footer class="card-actions">
       <button class="ghost" @click="expanded = !expanded">
-        {{ expanded ? "Hide preview" : "Preview vmoptions" }}
+        {{ expanded ? "收起预览" : "预览 vmoptions" }}
       </button>
       <div class="spacer" />
       <button class="danger" :disabled="busy || !product.javaagent_installed" @click="uninstall">
-        Uninstall
+        卸载
       </button>
       <button class="primary" :disabled="busy" @click="install">
-        {{ busy ? "…" : product.javaagent_installed ? "Reinstall" : "Install" }}
+        {{ busy ? "…" : product.javaagent_installed ? "重新安装" : "安装" }}
       </button>
     </footer>
 
