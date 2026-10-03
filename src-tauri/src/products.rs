@@ -106,7 +106,7 @@ pub fn detect_one(id: &str, name: &str, resource_root: &std::path::Path) -> Prod
         id: id.to_string(),
         name: name.to_string(),
         env_var,
-        vmoptions_path: path.map(|p| p.display().to_string()),
+        vmoptions_path: path.map(|p| platform::normalize_path_for_output(&p)),
         vmoptions_source: source,
         javaagent_installed,
         javaagent_target,
