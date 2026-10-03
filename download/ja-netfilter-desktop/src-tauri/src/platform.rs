@@ -90,6 +90,10 @@ pub fn javaagent_line(jar_path: &Path) -> String {
 ///   1. `<PRODUCT>_VM_OPTIONS` 环境变量（如果已显式设置）
 ///   2. 用户默认 vmoptions 路径（JetBrains 配置目录下）
 ///   3. 工作区中镜像的模板（`<workdir>/vmoptions/<id>.vmoptions`）
+///
+/// 注意：此函数已被 installer.rs 和 products.rs 中的本地 find_vmoptions 替代，
+/// 保留是为了未来可能的复用。
+#[allow(dead_code)]
 pub fn find_vmoptions_path(product_id: &str, workdir: &Path) -> Option<PathBuf> {
     let env_key = format!("{}_VM_OPTIONS", product_id.to_uppercase());
     if let Ok(val) = std::env::var(&env_key) {
