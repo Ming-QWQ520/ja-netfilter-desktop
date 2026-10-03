@@ -4,7 +4,7 @@
 //! lib.jar 始终使用项目自带路径（不复制到工作区）。
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Context, Result};
 
