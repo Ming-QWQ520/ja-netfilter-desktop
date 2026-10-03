@@ -33,6 +33,7 @@ pub enum VmoptionsSource {
 }
 
 impl VmoptionsSource {
+    #[allow(dead_code)]
     pub fn label(self) -> &'static str {
         match self {
             VmoptionsSource::Env => "Env var",
@@ -62,7 +63,9 @@ pub fn detect_one(id: &str, name: &str, workdir: &std::path::Path) -> ProductInf
 
     let (path, source) = match platform::find_vmoptions_path(id, workdir) {
         Some(p) => {
-            let is_env = std::env::var(&env_var).map(|v| PathBuf::from(v) == p).unwrap_or(false);
+            let is_env = std::env::var(&env_var)
+                .map(|v| std::path::Path::new(&v) == p.as_path())
+                .unwrap_or(false);
             let is_template = p.starts_with(workdir);
             let source = if is_env {
                 VmoptionsSource::Env

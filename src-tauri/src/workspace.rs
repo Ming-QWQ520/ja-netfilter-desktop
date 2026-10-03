@@ -32,6 +32,7 @@ const RESOURCE_FILES: &[(&str, &str)] = &[
 ];
 
 /// All known vmoptions product identifiers (matches the upstream install.sh).
+#[allow(dead_code)]
 pub static JB_PRODUCT_IDS: &[&str] = &[
     "idea",
     "clion",
@@ -94,6 +95,7 @@ impl WorkspaceState {
         self.workdir.read().clone()
     }
 
+    #[allow(dead_code)]
     pub fn set(&self, path: PathBuf) {
         *self.workdir.write() = path;
     }
@@ -178,6 +180,7 @@ fn mirror_resources(app: &AppHandle, workdir: &Path) -> Result<()> {
 }
 
 /// Return the workspace directory currently in use.
+#[allow(dead_code)]
 pub fn current_workdir(state: &WorkspaceState) -> PathBuf {
     state.get()
 }

@@ -35,10 +35,12 @@ impl Os {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_windows(self) -> bool {
         matches!(self, Os::Windows)
     }
 
+    #[allow(dead_code)]
     pub fn is_macos(self) -> bool {
         matches!(self, Os::Macos)
     }
