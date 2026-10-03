@@ -1,6 +1,6 @@
 {
   "name": "ja-netfilter-desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Desktop GUI for ja-netfilter — manage JetBrains javaagent, plugins, configs and vmoptions",
   "type": "module",

@@ -58,15 +58,15 @@ pub fn detect_all(state: &WorkspaceState) -> Vec<ProductInfo> {
         .collect()
 }
 
-pub fn detect_one(id: &str, name: &str, resource_root: &std::path::Path) -> ProductInfo {
+pub fn detect_one(id: &str, name: &str, workdir: &std::path::Path) -> ProductInfo {
     let env_var = platform::env_var_name(id);
 
-    let (path, source) = match platform::find_vmoptions_path(id, resource_root) {
+    let (path, source) = match platform::find_vmoptions_path(id, workdir) {
         Some(p) => {
             let is_env = std::env::var(&env_var)
                 .map(|v| std::path::Path::new(&v) == p.as_path())
                 .unwrap_or(false);
-            let is_template = p.starts_with(resource_root);
+            let is_template = p.starts_with(workdir);
             let source = if is_env {
                 VmoptionsSource::Env
             } else if is_template {
@@ -114,7 +114,7 @@ pub fn detect_one(id: &str, name: &str, resource_root: &std::path::Path) -> Prod
     }
 }
 
-/// 项目自带 jar 在 resource_root 下的路径。
-pub fn resource_jar_path(resource_root: &std::path::Path) -> PathBuf {
-    resource_root.join("lib.jar")
+/// 工作区中 lib.jar 的路径。
+pub fn workspace_jar_path(workdir: &std::path::Path) -> PathBuf {
+    workdir.join("lib.jar")
 }

@@ -37,13 +37,13 @@ pub fn refresh_product_status(
     state: State<'_, WorkspaceState>,
     product_id: String,
 ) -> Result<ProductInfo, String> {
-    let resource_root = state.get();
+    let workdir = state.get();
     let name = products::list_known_products()
         .into_iter()
         .find(|(id, _)| *id == product_id)
         .map(|(_, n)| n)
         .unwrap_or(product_id.as_str());
-    Ok(products::detect_one(&product_id, name, &resource_root))
+    Ok(products::detect_one(&product_id, name, &workdir))
 }
 
 // -------- Install / Uninstall ----------------------------------------------
@@ -183,8 +183,8 @@ pub struct PluginJar {
 
 #[tauri::command]
 pub fn read_plugin_jars(state: State<'_, WorkspaceState>) -> Result<Vec<PluginJar>, String> {
-    let resource_root = state.get();
-    let plugins_dir = resource_root.join("plugins");
+    let workdir = state.get();
+    let plugins_dir = workdir.join("plugins");
     let mut out = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
         for entry in entries.flatten() {
@@ -213,11 +213,11 @@ pub fn get_workspace_info(
     state: State<'_, WorkspaceState>,
     app: AppHandle,
 ) -> Result<WorkspaceInfo, String> {
-    let resource_root = state.get();
-    let jar_path = resource_root.join("lib.jar");
-    let vmoptions_dir = resource_root.join("vmoptions");
-    let config_dir = resource_root.join("config");
-    let plugins_dir = resource_root.join("plugins");
+    let workdir = state.get();
+    let jar_path = workdir.join("lib.jar");
+    let vmoptions_dir = workdir.join("vmoptions");
+    let config_dir = workdir.join("config");
+    let plugins_dir = workdir.join("plugins");
 
     let mut plugin_jars = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
@@ -234,7 +234,7 @@ pub fn get_workspace_info(
     }
 
     Ok(WorkspaceInfo {
-        workdir: crate::platform::normalize_path_for_output(&resource_root),
+        workdir: crate::platform::normalize_path_for_output(&workdir),
         jar_path: crate::platform::normalize_path_for_output(&jar_path),
         jar_exists: jar_path.exists(),
         plugin_jars: plugin_jars
