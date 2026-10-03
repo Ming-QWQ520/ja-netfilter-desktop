@@ -20,6 +20,7 @@ use parking_lot::RwLock;
 use tauri::{AppHandle, Manager};
 
 /// 所有已知的 JetBrains 产品 ID（与原版 install.sh 保持一致）。
+#[allow(dead_code)]
 pub static JB_PRODUCT_IDS: &[&str] = &[
     "idea",
     "clion",
