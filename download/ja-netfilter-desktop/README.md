@@ -42,7 +42,7 @@ ja-netfilter-desktop/
 │   ├── capabilities/default.json  # Tauri 2 capability manifest
 │   ├── icons/                    # placeholder app icons
 │   └── tauri.conf.json           # Tauri 2 config
-└── package.json                  # Node toolchain (Vite + Tauri CLI)
+└── package.json                  # Node toolchain (Vite + Tauri CLI, pnpm)
 ```
 
 ### Install / uninstall semantics
@@ -89,11 +89,15 @@ On Linux you'll additionally need `webkit2gtk-4.1`, `librsvg`, `libgtk-3`, `liba
 ## Development
 
 ```bash
+# 0. Enable pnpm (Node ≥ 20 ships with corepack)
+corepack enable
+corepack prepare pnpm@9 --activate
+
 # 1. Install JS deps
-npm install
+pnpm install
 
 # 2. Run the dev build (starts Vite + Tauri together, hot reload on the frontend)
-npm run tauri:dev
+pnpm tauri:dev
 ```
 
 The first run will compile the entire Rust backend (≈ 2-3 minutes) and launch the desktop window.
@@ -101,7 +105,7 @@ The first run will compile the entire Rust backend (≈ 2-3 minutes) and launch 
 ## Production build
 
 ```bash
-npm run tauri:build
+pnpm tauri:build
 ```
 
 Output artifacts land under `src-tauri/target/release/bundle/`:
@@ -109,6 +113,24 @@ Output artifacts land under `src-tauri/target/release/bundle/`:
 - **Linux** — `.deb`, `.rpm`, `.AppImage`
 - **macOS** — `.dmg`, `.app`
 - **Windows** — `.msi`, `.exe` (NSIS)
+
+## CI / GitHub Actions
+
+The repo ships with two workflows under `.github/workflows/`:
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | push / PR | Installs pnpm + Rust, type-checks the frontend, runs `pnpm build` |
+| `release.yml` | tag `v*` | Cross-compiles Tauri bundles for Windows, macOS and Linux; attaches artifacts to the GitHub Release |
+
+To cut a release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The release workflow will build for all three platforms in parallel and upload `.msi`, `.dmg`, `.AppImage`, `.deb` and `.rpm` artifacts to the release page.
 
 ---
 
@@ -141,7 +163,7 @@ The TypeScript wrappers live in [`src/api/index.ts`](src/api/index.ts).
 If you have your own build of `ja-netfilter.jar` (or just want to swap the jar in place), you can either:
 
 - Replace the file at `<workdir>/lib.jar` after first launch (the workspace takes precedence), or
-- Replace `src-tauri/resources/lib.jar` *before* running `npm run tauri:build` so the bundle ships with your version.
+- Replace `src-tauri/resources/lib.jar` *before* running `pnpm tauri:build` so the bundle ships with your version.
 
 The vmoptions files always reference `<workdir>/lib.jar`, so the swap is transparent to the install logic.
 
