@@ -1,22 +1,18 @@
-//! Cross-platform install / uninstall logic.
+//! 跨平台安装 / 卸载逻辑。
 //!
-//! This module replaces the upstream shell/VBS scripts (`scripts/install.sh`,
-//! `scripts/install-current-user.vbs`, etc.) with a single Rust implementation
-//! that performs exactly the same steps:
+//! 本模块替代原版的 shell / VBS 脚本（`scripts/install.sh`、
+//! `scripts/install-current-user.vbs` 等），用一个 Rust 实现完成完全相同的步骤：
 //!
-//!   1. Ensure the workspace `lib.jar` exists (it is mirrored at app start by
-//!      `workspace::init_workdir`, so this is normally a no-op).
-//!   2. For each requested product, find the per-user vmoptions file (or fall
-//!      back to the bundled template).
-//!   3. Strip any existing `-javaagent:` line that targets ja-netfilter.
-//!   4. Append `-javaagent:<workspace>/lib.jar=jetbrains`.
-//!   5. Persist the `<PRODUCT>_VM_OPTIONS` env var so the IDE picks it up.
-//!      On Linux we additionally write to `~/.profile`, `~/.bashrc` and
-//!      `~/.zshrc` (mirroring install.sh). On macOS we use `launchctl setenv`.
-//!      On Windows we update the user environment block via `setx`.
+//!   1. 找到对应产品的 vmoptions 文件（用户配置目录优先，回退到项目自带模板）。
+//!   2. 移除任何已有的指向 ja-netfilter 的 `-javaagent:` 行。
+//!   3. 追加 `-javaagent:<resource_root>/lib.jar=jetbrains`。
+//!   4. 若提供了 `license_name`，则同时追加 `-Dja.netfilter.name=<license_name>`。
+//!   5. 持久化 `<PRODUCT>_VM_OPTIONS` 环境变量，使 IDE 下次启动时读取该文件。
+//!      - Linux：写入 `~/.profile`、`~/.bashrc`、`~/.zshrc`
+//!      - macOS：执行 `launchctl setenv` 并写入 shell rc 文件
+//!      - Windows：执行 `setx`
 //!
-//! All side-effects are reported through the structured return values and
-//! appended to the in-memory log buffer (see `logger.rs`).
+//! 所有副作用都会通过 `logger.rs` 写入内存日志缓冲，供前端日志控制台读取。
 
 use std::fs;
 
@@ -25,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::logger;
 use crate::platform::{self, Os};
-use crate::products::workspace_jar_path;
+use crate::products::resource_jar_path;
 use crate::vmoptions;
 use crate::workspace::WorkspaceState;
 
@@ -38,21 +34,21 @@ pub struct InstallResult {
     pub message: String,
 }
 
-/// Install the javaagent for a single product.
-pub fn install(state: &WorkspaceState, product_id: &str) -> Result<InstallResult> {
-    let workdir = state.get();
-    let jar = workspace_jar_path(&workdir);
+/// 为单个产品安装 javaagent。`license_name` 为可选的自定义授权名称。
+pub fn install(state: &WorkspaceState, product_id: &str, license_name: Option<&str>) -> Result<InstallResult> {
+    let resource_root = state.get();
+    let jar = resource_jar_path(&resource_root);
     if !jar.exists() {
         return Ok(InstallResult {
             product_id: product_id.to_string(),
             success: false,
             vmoptions_path: None,
             jar_path: jar.display().to_string(),
-            message: format!("ja-netfilter jar not found at {}", jar.display()),
+            message: format!("未找到 ja-netfilter jar：{}", jar.display()),
         });
     }
 
-    let vm_path = match platform::find_vmoptions_path(product_id, &workdir) {
+    let vm_path = match platform::find_vmoptions_path(product_id, &resource_root) {
         Some(p) => p,
         None => {
             return Ok(InstallResult {
@@ -61,22 +57,22 @@ pub fn install(state: &WorkspaceState, product_id: &str) -> Result<InstallResult
                 vmoptions_path: None,
                 jar_path: jar.display().to_string(),
                 message: format!(
-                    "No vmoptions file found for {} — install the IDE first or use the bundled template.",
+                    "未找到 {} 的 vmoptions 文件 —— 请先安装对应 IDE，或使用项目自带模板。",
                     product_id
                 ),
             })
         }
     };
 
-    // Edit the vmoptions in place — strip old javaagent lines and append fresh.
-    vmoptions::ensure_javaagent(&vm_path, &jar)?;
+    // 原地编辑 vmoptions：先剥离旧的 javaagent 行，再追加新的；若有自定义授权
+    // 名称，则同时追加 -Dja.netfilter.name=<value>。
+    vmoptions::ensure_javaagent(&vm_path, &jar, license_name)?;
 
-    // Persist the env var so the IDE picks up the vmoptions path.
+    // 持久化环境变量，使 IDE 下次启动时使用该 vmoptions。
     let env_var = platform::env_var_name(product_id);
     let vm_path_str = vm_path.display().to_string();
     match Os::current() {
         Os::Macos => {
-            // Best-effort launchctl, then write to shell rc files.
             std::process::Command::new("launchctl")
                 .args(["setenv", &env_var, &vm_path_str])
                 .status()
@@ -87,8 +83,6 @@ pub fn install(state: &WorkspaceState, product_id: &str) -> Result<InstallResult
             write_shell_rc(&env_var, &vm_path_str)?;
         }
         Os::Windows => {
-            // setx persists for future sessions. We can't use std::env::set_var
-            // persistently across reboots, so setx is what we want here.
             std::process::Command::new("setx")
                 .args([&env_var, &vm_path_str])
                 .status()
@@ -99,9 +93,14 @@ pub fn install(state: &WorkspaceState, product_id: &str) -> Result<InstallResult
     logger::append(
         logger::Level::Info,
         &format!(
-            "[{}] installed javaagent -> {}",
+            "[{}] 已安装 javaagent -> {}{}",
             product_id,
-            vm_path.display()
+            vm_path.display(),
+            if let Some(n) = license_name {
+                format!("（自定义授权名称：{}）", n)
+            } else {
+                String::new()
+            }
         ),
     );
 
@@ -110,15 +109,15 @@ pub fn install(state: &WorkspaceState, product_id: &str) -> Result<InstallResult
         success: true,
         vmoptions_path: Some(vm_path_str),
         jar_path: jar.display().to_string(),
-        message: format!("Installed javaagent into {}", "vmoptions file"),
+        message: "javaagent 已写入 vmoptions 文件".into(),
     })
 }
 
-/// Uninstall the javaagent from a single product.
+/// 为单个产品卸载 javaagent。
 pub fn uninstall(state: &WorkspaceState, product_id: &str) -> Result<InstallResult> {
-    let workdir = state.get();
-    let jar = workspace_jar_path(&workdir);
-    let vm_path = match platform::find_vmoptions_path(product_id, &workdir) {
+    let resource_root = state.get();
+    let jar = resource_jar_path(&resource_root);
+    let vm_path = match platform::find_vmoptions_path(product_id, &resource_root) {
         Some(p) => p,
         None => {
             return Ok(InstallResult {
@@ -126,15 +125,13 @@ pub fn uninstall(state: &WorkspaceState, product_id: &str) -> Result<InstallResu
                 success: false,
                 vmoptions_path: None,
                 jar_path: jar.display().to_string(),
-                message: format!("No vmoptions file found for {} — nothing to uninstall.", product_id),
+                message: format!("未找到 {} 的 vmoptions 文件，无需卸载。", product_id),
             })
         }
     };
 
     vmoptions::strip_javaagent(&vm_path)?;
 
-    // On macOS, also unset the env var via launchctl; on Windows, leave the
-    // var set (it points at a file that simply no longer has the agent).
     let env_var = platform::env_var_name(product_id);
     if Os::current() == Os::Macos {
         std::process::Command::new("launchctl")
@@ -146,7 +143,7 @@ pub fn uninstall(state: &WorkspaceState, product_id: &str) -> Result<InstallResu
 
     logger::append(
         logger::Level::Info,
-        &format!("[{}] removed javaagent from {}", product_id, vm_path.display()),
+        &format!("[{}] 已从 {} 移除 javaagent", product_id, vm_path.display()),
     );
 
     Ok(InstallResult {
@@ -154,11 +151,11 @@ pub fn uninstall(state: &WorkspaceState, product_id: &str) -> Result<InstallResu
         success: true,
         vmoptions_path: Some(vm_path.display().to_string()),
         jar_path: jar.display().to_string(),
-        message: "Removed javaagent line".into(),
+        message: "已移除 javaagent 行".into(),
     })
 }
 
-/// Append `export <ENV>=<path>` to ~/.profile, ~/.bashrc, ~/.zshrc. Idempotent.
+/// 在 ~/.profile、~/.bashrc、~/.zshrc 中追加 `export <ENV>=<path>`。幂等。
 fn write_shell_rc(env_var: &str, value: &str) -> Result<()> {
     let line = format!("export {}=\"{}\"", env_var, value);
     let mut added = false;
@@ -186,12 +183,12 @@ fn write_shell_rc(env_var: &str, value: &str) -> Result<()> {
     }
 
     if !added {
-        log::warn!("could not persist env var {} to any shell rc file", env_var);
+        log::warn!("无法将环境变量 {} 写入任何 shell rc 文件", env_var);
     }
     Ok(())
 }
 
-/// Remove any line that exports the named env var from ~/.profile, ~/.bashrc, ~/.zshrc.
+/// 从 ~/.profile、~/.bashrc、~/.zshrc 中移除指定环境变量的 export 行。
 fn remove_shell_rc(env_var: &str) -> Result<()> {
     let pattern = format!("export {}=", env_var);
     for path_str in [".profile", ".bashrc", ".zshrc"] {

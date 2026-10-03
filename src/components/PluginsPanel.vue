@@ -10,14 +10,14 @@ const plugins = ref<PluginJar[]>([]);
 const loading = ref(false);
 
 const pluginDocs: Record<string, string> = {
-  "dns.jar": "Hook for `java.net.InetAddress` lookups. Matches hostnames against dns.conf rules — block, fall-through, or rewrite.",
-  "hideme.jar": "Hides the ja-netfilter agent from `Instrumentation.getInitiatedClasses()` so IDE-side anti-cheat checks don't see it.",
-  "power.jar": "Implements the transformation engine from power.conf — used to swap RSA modulus / exponent values inside the IDE.",
-  "url.jar": "Intercepts HTTP requests matching url.conf rules and serves canned responses locally instead of hitting JetBrains servers.",
+  "dns.jar": "Hook `java.net.InetAddress` 的域名查询。按 dns.conf 规则匹配主机名 —— 阻断、放行或改写。",
+  "hideme.jar": "对 `Instrumentation.getInitiatedClasses()` 隐藏 ja-netfilter 自身，避免 IDE 内部的探测检查发现 agent。",
+  "power.jar": "实现 power.conf 中描述的变换引擎 —— 用于替换 IDE 内部 RSA 模数 / 指数等敏感值。",
+  "url.jar": "拦截匹配 url.conf 规则的 HTTP 请求，并直接返回本地响应，无需访问 JetBrains 服务器。",
 };
 
 function descriptionFor(name: string): string {
-  return pluginDocs[name] ?? "ja-netfilter plugin.";
+  return pluginDocs[name] ?? "ja-netfilter 插件。";
 }
 
 async function load() {
@@ -38,17 +38,17 @@ onMounted(load);
   <section class="content-area">
     <header class="content-header">
       <div>
-        <h2>Plugins</h2>
-        <p class="subtitle">java agent plugins loaded by lib.jar at IDE startup.</p>
+        <h2>插件</h2>
+        <p class="subtitle">IDE 启动时由 lib.jar 加载的 Java agent 插件。</p>
       </div>
       <div class="toolbar">
-        <button class="ghost" :disabled="loading" @click="load">Reload</button>
+        <button class="ghost" :disabled="loading" @click="load">重新加载</button>
       </div>
     </header>
 
     <div class="content-body">
-      <div v-if="loading && !plugins.length" class="empty">Loading plugins…</div>
-      <div v-else-if="!plugins.length" class="empty">No plugins found.</div>
+      <div v-if="loading && !plugins.length" class="empty">正在加载插件列表…</div>
+      <div v-else-if="!plugins.length" class="empty">未找到任何插件。</div>
       <div v-else class="grid-cards">
         <article v-for="p in plugins" :key="p.path" class="plugin-card">
           <header>

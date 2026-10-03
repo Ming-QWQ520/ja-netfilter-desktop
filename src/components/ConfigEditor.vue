@@ -54,7 +54,7 @@ async function save() {
   try {
     await api.writeConfig(activePath.value, content.value);
     originalContent.value = content.value;
-    toast.success(`Saved ${activePath.value}`);
+    toast.success(`已保存 ${activePath.value}`);
   } catch (e: any) {
     toast.error(String(e));
   } finally {
@@ -75,11 +75,11 @@ onMounted(loadConfigs);
 function descriptionFor(name: string): string {
   switch (name) {
     case "dns.conf":
-      return "Plugin: dns — block or rewrite hostnames resolved by the IDE.";
+      return "插件：dns —— 拦截或改写 IDE 内部的域名解析请求。";
     case "power.conf":
-      return "Plugin: power — RSA key/value transformation rules used by the agent.";
+      return "插件：power —— agent 内部使用的 RSA 密钥 / 指数变换规则。";
     case "url.conf":
-      return "Plugin: url — intercept matching outbound URLs and respond locally.";
+      return "插件：url —— 拦截匹配的对外 URL 请求并直接返回本地响应。";
     default:
       return "";
   }
@@ -90,14 +90,14 @@ function descriptionFor(name: string): string {
   <section class="content-area">
     <header class="content-header">
       <div>
-        <h2>Plugin Configs</h2>
-        <p class="subtitle">Edit the dns / power / url plugin rules used by ja-netfilter.</p>
+        <h2>插件配置</h2>
+        <p class="subtitle">编辑 dns / power / url 插件使用的规则文件。</p>
       </div>
       <div class="toolbar">
-        <button class="ghost" :disabled="loading" @click="loadConfigs">Reload</button>
-        <button class="ghost" :disabled="!dirty" @click="revert">Revert</button>
+        <button class="ghost" :disabled="loading" @click="loadConfigs">重新加载</button>
+        <button class="ghost" :disabled="!dirty" @click="revert">撤销</button>
         <button class="primary" :disabled="!dirty || saving" @click="save">
-          {{ saving ? "Saving…" : "Save" }}
+          {{ saving ? "保存中…" : "保存" }}
         </button>
       </div>
     </header>
@@ -121,13 +121,13 @@ function descriptionFor(name: string): string {
         <div v-if="activeConfig" class="editor-meta">
           <span class="badge info">{{ activeConfig.name }}</span>
           <span class="badge">{{ (activeConfig.size / 1024).toFixed(2) }} KB</span>
-          <span v-if="dirty" class="badge warn">unsaved</span>
+          <span v-if="dirty" class="badge warn">未保存</span>
         </div>
         <textarea
           v-model="content"
           class="editor-text"
           spellcheck="false"
-          :placeholder="activeConfig ? `Edit ${activeConfig.name}…` : 'Select a config file'"
+          :placeholder="activeConfig ? `编辑 ${activeConfig.name}…` : '请选择一个配置文件'"
         />
       </div>
     </div>

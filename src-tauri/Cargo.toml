@@ -1,8 +1,8 @@
 [package]
 name = "ja-netfilter-desktop"
-version = "1.0.0"
+version = "0.1.0"
 description = "Desktop GUI for ja-netfilter — manage JetBrains javaagent, plugins, configs and vmoptions"
-authors = ["ja-netfilter-desktop"]
+authors = ["Ming-QWQ520"]
 edition = "2021"
 rust-version = "1.77"
 

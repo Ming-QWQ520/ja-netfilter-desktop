@@ -20,11 +20,15 @@ export const api = {
     invoke<ProductInfo>("refresh_product_status", { productId: id }),
 
   // Install / Uninstall
-  installProduct: (id: string) =>
-    invoke<InstallResult>("install_product", { productId: id }),
+  // `licenseName` is optional. When provided, the backend appends an extra
+  //   -Dja.netfilter.name=<licenseName>
+  // line to the vmoptions file alongside the -javaagent line.
+  installProduct: (id: string, licenseName?: string) =>
+    invoke<InstallResult>("install_product", { productId: id, licenseName }),
   uninstallProduct: (id: string) =>
     invoke<InstallResult>("uninstall_product", { productId: id }),
-  installAllProducts: () => invoke<InstallResult[]>("install_all_products"),
+  installAllProducts: (licenseName?: string) =>
+    invoke<InstallResult[]>("install_all_products", { licenseName }),
   uninstallAllProducts: () => invoke<InstallResult[]>("uninstall_all_products"),
 
   // vmoptions

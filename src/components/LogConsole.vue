@@ -40,13 +40,11 @@ function copyAll() {
     .map((e) => `[${e.ts}] ${e.level.toUpperCase()} ${e.message}`)
     .join("\n");
   navigator.clipboard.writeText(text);
-  toast.success("Copied log to clipboard.");
+  toast.success("已复制日志到剪贴板。");
 }
 
 onMounted(async () => {
   await load();
-  // Polling fallback — the backend doesn't emit events for log entries
-  // (see logger.rs comment), so we poll every 2 seconds.
   setInterval(load, 2000);
 });
 </script>
@@ -55,23 +53,23 @@ onMounted(async () => {
   <section class="content-area">
     <header class="content-header">
       <div>
-        <h2>Logs</h2>
-        <p class="subtitle">All install / uninstall / IO operations are mirrored here.</p>
+        <h2>日志</h2>
+        <p class="subtitle">所有安装 / 卸载 / 文件读写操作都会同步记录到这里。</p>
       </div>
       <div class="toolbar">
         <select v-model="filter" class="filter-select">
-          <option value="all">All levels</option>
-          <option value="debug">Debug</option>
-          <option value="info">Info</option>
-          <option value="warn">Warn</option>
-          <option value="error">Error</option>
+          <option value="all">全部级别</option>
+          <option value="debug">调试</option>
+          <option value="info">信息</option>
+          <option value="warn">警告</option>
+          <option value="error">错误</option>
         </select>
         <label class="check">
-          <input type="checkbox" v-model="autoscroll" /> autoscroll
+          <input type="checkbox" v-model="autoscroll" /> 自动滚动
         </label>
-        <button class="ghost" @click="copyAll">Copy</button>
-        <button class="danger" @click="clear">Clear</button>
-        <button class="ghost" @click="load">Refresh</button>
+        <button class="ghost" @click="copyAll">复制</button>
+        <button class="danger" @click="clear">清空</button>
+        <button class="ghost" @click="load">刷新</button>
       </div>
     </header>
 
@@ -82,7 +80,7 @@ onMounted(async () => {
           <span class="log-level" :style="{ color: levelColor[e.level] }">{{ e.level.toUpperCase() }}</span>
           <span class="log-msg">{{ e.message }}</span>
         </div>
-        <div v-if="!filtered().length" class="empty">No log entries yet.</div>
+        <div v-if="!filtered().length" class="empty">暂无日志。</div>
       </div>
     </div>
   </section>

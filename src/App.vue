@@ -38,7 +38,7 @@ onMounted(async () => {
     </router-view>
     <div v-else class="loading-screen">
       <div class="loader" />
-      <p>Loading workspace…</p>
+      <p>正在加载工作区…</p>
     </div>
     <ToastHost />
   </div>
