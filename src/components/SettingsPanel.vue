@@ -13,6 +13,16 @@ const toast = useToast();
 const info = computed(() => settings.info);
 const licenseInput = ref(license.name);
 
+// 插件目录：与 lib.jar 同级，目录名 plugins-jetbrains
+// lib.jar 路径形如 <resource_root>/lib.jar，去掉末尾的 lib.jar 后拼接 plugins-jetbrains
+const pluginsDir = computed(() => {
+  const jarPath = info.value?.jar_path ?? "";
+  if (!jarPath) return "";
+  // 去掉末尾的 /lib.jar 或 \lib.jar
+  const base = jarPath.replace(/[/\\]lib\.jar$/, "");
+  return `${base}/plugins-jetbrains`;
+});
+
 const osLabel = computed(() => {
   switch (info.value?.os) {
     case "windows":
@@ -131,12 +141,12 @@ onMounted(() => settings.refresh());
         <div class="setting-row">
           <div class="setting-label">
             <h3>插件目录</h3>
-            <p>ja-netfilter 运行时查找插件 jar 的位置。</p>
+            <p>ja-netfilter 运行时查找插件 jar 的位置（与 lib.jar 同级，目录名 plugins-jetbrains 与 -javaagent:...=jetbrains 参数对应）。</p>
           </div>
           <div class="setting-value">
-            <code class="path">{{ info.workdir }}/plugins</code>
+            <code class="path">{{ pluginsDir }}</code>
             <div class="actions">
-              <button class="ghost" @click="reveal(`${info.workdir}/plugins`)">在文件管理器中显示</button>
+              <button class="ghost" @click="reveal(pluginsDir)">在文件管理器中显示</button>
             </div>
           </div>
         </div>

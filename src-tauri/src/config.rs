@@ -18,10 +18,12 @@ pub struct ConfigFile {
 }
 
 /// 项目自带的插件配置文件清单。
+/// 注意：目录名为 `config-jetbrains`，因为 -javaagent:...=jetbrains 参数会让
+/// ja-netfilter.jar 查找 `config-jetbrains/`、`plugins-jetbrains/`、`logs-jetbrains/`。
 pub const CONFIG_FILES: &[&str] = &[
-    "config/dns.conf",
-    "config/power.conf",
-    "config/url.conf",
+    "config-jetbrains/dns.conf",
+    "config-jetbrains/power.conf",
+    "config-jetbrains/url.conf",
 ];
 
 /// 枚举配置文件。优先工作区副本，回退项目自带模板。

@@ -183,7 +183,8 @@ pub struct PluginJar {
 #[tauri::command]
 pub fn read_plugin_jars(state: State<'_, WorkspaceState>) -> Result<Vec<PluginJar>, String> {
     let resource_root = state.resource_root();
-    let plugins_dir = resource_root.join("plugins");
+    // 目录名为 plugins-jetbrains（与 -javaagent:...=jetbrains 参数对应）
+    let plugins_dir = resource_root.join("plugins-jetbrains");
     let mut out = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
         for entry in entries.flatten() {
@@ -216,8 +217,8 @@ pub fn get_workspace_info(
     let resource_root = state.resource_root();
     let jar_path = resource_root.join("lib.jar");
     let vmoptions_dir_resource = resource_root.join("vmoptions");
-    let config_dir_resource = resource_root.join("config");
-    let plugins_dir = resource_root.join("plugins");
+    let config_dir_resource = resource_root.join("config-jetbrains");
+    let plugins_dir = resource_root.join("plugins-jetbrains");
 
     let mut plugin_jars = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
