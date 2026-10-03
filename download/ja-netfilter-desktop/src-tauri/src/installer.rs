@@ -69,8 +69,9 @@ pub fn install(state: &WorkspaceState, product_id: &str, license_name: Option<&s
     vmoptions::ensure_javaagent(&vm_path, &jar, license_name)?;
 
     // 持久化环境变量，使 IDE 下次启动时使用该 vmoptions。
+    // 路径经过规范化（剥离 \\?\ 前缀 + 正斜杠），确保 IDE 能正确读取。
     let env_var = platform::env_var_name(product_id);
-    let vm_path_str = vm_path.display().to_string();
+    let vm_path_str = platform::normalize_path_for_output(&vm_path);
     match Os::current() {
         Os::Macos => {
             std::process::Command::new("launchctl")
@@ -95,7 +96,7 @@ pub fn install(state: &WorkspaceState, product_id: &str, license_name: Option<&s
         &format!(
             "[{}] 已安装 javaagent -> {}{}",
             product_id,
-            vm_path.display(),
+            vm_path_str,
             if let Some(n) = license_name {
                 format!("（自定义授权名称：{}）", n)
             } else {
@@ -108,7 +109,7 @@ pub fn install(state: &WorkspaceState, product_id: &str, license_name: Option<&s
         product_id: product_id.to_string(),
         success: true,
         vmoptions_path: Some(vm_path_str),
-        jar_path: jar.display().to_string(),
+        jar_path: platform::normalize_path_for_output(&jar),
         message: "javaagent 已写入 vmoptions 文件".into(),
     })
 }
@@ -124,7 +125,7 @@ pub fn uninstall(state: &WorkspaceState, product_id: &str) -> Result<InstallResu
                 product_id: product_id.to_string(),
                 success: false,
                 vmoptions_path: None,
-                jar_path: jar.display().to_string(),
+                jar_path: platform::normalize_path_for_output(&jar),
                 message: format!("未找到 {} 的 vmoptions 文件，无需卸载。", product_id),
             })
         }
@@ -141,16 +142,17 @@ pub fn uninstall(state: &WorkspaceState, product_id: &str) -> Result<InstallResu
     }
     remove_shell_rc(&env_var)?;
 
+    let vm_path_str = platform::normalize_path_for_output(&vm_path);
     logger::append(
         logger::Level::Info,
-        &format!("[{}] 已从 {} 移除 javaagent", product_id, vm_path.display()),
+        &format!("[{}] 已从 {} 移除 javaagent", product_id, vm_path_str),
     );
 
     Ok(InstallResult {
         product_id: product_id.to_string(),
         success: true,
-        vmoptions_path: Some(vm_path.display().to_string()),
-        jar_path: jar.display().to_string(),
+        vmoptions_path: Some(vm_path_str),
+        jar_path: platform::normalize_path_for_output(&jar),
         message: "已移除 javaagent 行".into(),
     })
 }

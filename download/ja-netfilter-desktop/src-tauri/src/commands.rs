@@ -197,7 +197,7 @@ pub fn read_plugin_jars(state: State<'_, WorkspaceState>) -> Result<Vec<PluginJa
                         .and_then(|s| s.to_str())
                         .unwrap_or_default()
                         .to_string(),
-                    path: path.display().to_string(),
+                    path: crate::platform::normalize_path_for_output(&path),
                     size,
                 });
             }
@@ -234,12 +234,15 @@ pub fn get_workspace_info(
     }
 
     Ok(WorkspaceInfo {
-        workdir: resource_root.display().to_string(),
-        jar_path: jar_path.display().to_string(),
+        workdir: crate::platform::normalize_path_for_output(&resource_root),
+        jar_path: crate::platform::normalize_path_for_output(&jar_path),
         jar_exists: jar_path.exists(),
-        plugin_jars,
-        vmoptions_dir: vmoptions_dir.display().to_string(),
-        config_dir: config_dir.display().to_string(),
+        plugin_jars: plugin_jars
+            .into_iter()
+            .map(|p| crate::platform::normalize_path_for_output(std::path::Path::new(&p)))
+            .collect(),
+        vmoptions_dir: crate::platform::normalize_path_for_output(&vmoptions_dir),
+        config_dir: crate::platform::normalize_path_for_output(&config_dir),
         os: crate::platform::Os::current(),
         app_version: app.package_info().version.to_string(),
     })
