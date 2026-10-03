@@ -30,12 +30,10 @@ pub fn list(state: &WorkspaceState) -> Result<Vec<ConfigFile>> {
     for rel in CONFIG_FILES {
         let workdir_copy = state.workdir().join(rel);
         let bundled = state.resource_root().join(rel);
-        let (path, size) = if workdir_copy.exists() {
-            let size = workdir_copy.metadata().map(|m| m.len()).unwrap_or(0);
-            (workdir_copy, size)
+        let size = if workdir_copy.exists() {
+            workdir_copy.metadata().map(|m| m.len()).unwrap_or(0)
         } else if bundled.exists() {
-            let size = bundled.metadata().map(|m| m.len()).unwrap_or(0);
-            (bundled, size)
+            bundled.metadata().map(|m| m.len()).unwrap_or(0)
         } else {
             continue;
         };

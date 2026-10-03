@@ -222,6 +222,7 @@ pub fn reset_resource(state: &WorkspaceState, rel: &str) -> Result<()> {
 /// 列出工作区 + 项目自带的资源文件。
 ///
 /// 用于 `config/*.conf`：合并去重后返回。
+#[allow(dead_code)]
 pub fn list_resources(state: &WorkspaceState, sub_dir: &str) -> Result<Vec<ResourceEntry>> {
     let mut entries = Vec::new();
     let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -269,6 +270,7 @@ pub fn list_resources(state: &WorkspaceState, sub_dir: &str) -> Result<Vec<Resou
     Ok(entries)
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ResourceEntry {
     pub name: String,
@@ -277,6 +279,7 @@ pub struct ResourceEntry {
     pub source: ResourceSource,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ResourceSource {
@@ -287,6 +290,7 @@ pub enum ResourceSource {
 }
 
 /// 解析工作区下的相对路径，禁止 `..` 逃逸。
+#[allow(dead_code)]
 pub fn resolve_under_workdir(state: &WorkspaceState, rel: &str) -> Result<PathBuf> {
     let root = state.workdir();
     let joined = root.join(rel);
