@@ -23,13 +23,12 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
+        # Version is auto-detected from the `packageManager` field in package.json.
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
@@ -80,7 +79,8 @@ jobs:
 
       - name: cargo fmt --check
         working-directory: src-tauri
-        run: cargo fmt --check || true
+        run: cargo fmt --check
+        continue-on-error: true  # formatting is a warning, not a CI blocker
 
       - name: cargo check
         working-directory: src-tauri
@@ -88,4 +88,4 @@ jobs:
 
       - name: cargo clippy
         working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings || cargo clippy --all-targets
+        run: cargo clippy --all-targets -- -D warnings
