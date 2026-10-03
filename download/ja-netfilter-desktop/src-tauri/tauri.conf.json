@@ -1,0 +1,55 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ja-netfilter Desktop",
+  "version": "1.0.0",
+  "identifier": "io.github.ja-netfilter.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ja-netfilter Desktop",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "decorations": true,
+        "transparent": false,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: asset: https://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "resources/lib.jar",
+      "resources/config/*",
+      "resources/plugins/*",
+      "resources/vmoptions/*",
+      "resources/scripts/*"
+    ],
+    "copyright": "© 2026 ja-netfilter-desktop contributors",
+    "category": "DeveloperTool",
+    "shortDescription": "Desktop GUI for ja-netfilter",
+    "longDescription": "Cross-platform desktop application to manage the ja-netfilter Java agent, plugins, configuration files and per-product vmoptions for JetBrains IDEs."
+  }
+}
