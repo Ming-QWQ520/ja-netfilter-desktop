@@ -89,8 +89,8 @@ pub fn javaagent_line(jar_path: &Path) -> String {
 /// install 脚本一致：
 ///   1. `<PRODUCT>_VM_OPTIONS` 环境变量（如果已显式设置）
 ///   2. 用户默认 vmoptions 路径（JetBrains 配置目录下）
-///   3. 应用自带的模板（`resources/vmoptions` 下）
-pub fn find_vmoptions_path(product_id: &str, resource_root: &Path) -> Option<PathBuf> {
+///   3. 工作区中镜像的模板（`<workdir>/vmoptions/<id>.vmoptions`）
+pub fn find_vmoptions_path(product_id: &str, workdir: &Path) -> Option<PathBuf> {
     let env_key = format!("{}_VM_OPTIONS", product_id.to_uppercase());
     if let Ok(val) = std::env::var(&env_key) {
         let p = PathBuf::from(&val);
@@ -105,7 +105,7 @@ pub fn find_vmoptions_path(product_id: &str, resource_root: &Path) -> Option<Pat
         }
     }
 
-    let template = resource_root
+    let template = workdir
         .join("vmoptions")
         .join(format!("{}.vmoptions", product_id));
     if template.exists() {

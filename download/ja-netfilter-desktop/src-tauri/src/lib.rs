@@ -29,11 +29,12 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            // 直接使用项目自带的 resources 目录，不复制到用户工作区。
-            let resource_root = workspace::init_resource_root(app.handle())?;
-            log::info!("使用项目自带资源目录：{}", resource_root.display());
+            // 初始化可写的用户工作区（lib.jar / plugins / configs / vmoptions 镜像到
+            // 用户配置目录），避免写入安装目录时遭遇权限拒绝。
+            let workdir = workspace::init_workdir(app.handle())?;
+            log::info!("使用工作区：{}", workdir.display());
 
-            app.manage(workspace::WorkspaceState::new(resource_root));
+            app.manage(workspace::WorkspaceState::new(workdir));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

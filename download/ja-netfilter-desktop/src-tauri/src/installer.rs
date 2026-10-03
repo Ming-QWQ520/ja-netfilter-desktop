@@ -5,7 +5,7 @@
 //!
 //!   1. 找到对应产品的 vmoptions 文件（用户配置目录优先，回退到项目自带模板）。
 //!   2. 移除任何已有的指向 ja-netfilter 的 `-javaagent:` 行。
-//!   3. 追加 `-javaagent:<resource_root>/lib.jar=jetbrains`。
+//!   3. 追加 `-javaagent:<workdir>/lib.jar=jetbrains`。
 //!   4. 若提供了 `license_name`，则同时追加 `-Dja.netfilter.name=<license_name>`。
 //!   5. 持久化 `<PRODUCT>_VM_OPTIONS` 环境变量，使 IDE 下次启动时读取该文件。
 //!      - Linux：写入 `~/.profile`、`~/.bashrc`、`~/.zshrc`
@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::logger;
 use crate::platform::{self, Os};
-use crate::products::resource_jar_path;
+use crate::products::workspace_jar_path;
 use crate::vmoptions;
 use crate::workspace::WorkspaceState;
 
@@ -36,19 +36,19 @@ pub struct InstallResult {
 
 /// 为单个产品安装 javaagent。`license_name` 为可选的自定义授权名称。
 pub fn install(state: &WorkspaceState, product_id: &str, license_name: Option<&str>) -> Result<InstallResult> {
-    let resource_root = state.get();
-    let jar = resource_jar_path(&resource_root);
+    let workdir = state.get();
+    let jar = workspace_jar_path(&workdir);
     if !jar.exists() {
         return Ok(InstallResult {
             product_id: product_id.to_string(),
             success: false,
             vmoptions_path: None,
-            jar_path: jar.display().to_string(),
+            jar_path: platform::normalize_path_for_output(&jar),
             message: format!("未找到 ja-netfilter jar：{}", jar.display()),
         });
     }
 
-    let vm_path = match platform::find_vmoptions_path(product_id, &resource_root) {
+    let vm_path = match platform::find_vmoptions_path(product_id, &workdir) {
         Some(p) => p,
         None => {
             return Ok(InstallResult {
@@ -116,9 +116,9 @@ pub fn install(state: &WorkspaceState, product_id: &str, license_name: Option<&s
 
 /// 为单个产品卸载 javaagent。
 pub fn uninstall(state: &WorkspaceState, product_id: &str) -> Result<InstallResult> {
-    let resource_root = state.get();
-    let jar = resource_jar_path(&resource_root);
-    let vm_path = match platform::find_vmoptions_path(product_id, &resource_root) {
+    let workdir = state.get();
+    let jar = workspace_jar_path(&workdir);
+    let vm_path = match platform::find_vmoptions_path(product_id, &workdir) {
         Some(p) => p,
         None => {
             return Ok(InstallResult {
