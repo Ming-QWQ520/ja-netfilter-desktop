@@ -26,7 +26,9 @@ pub enum VmoptionsSource {
     Env,
     /// 用户默认配置目录中找到。
     User,
-    /// 使用项目自带模板（用户目录下尚无文件）。
+    /// 工作区副本（用户修改过的 vmoptions）。
+    Workspace,
+    /// 项目自带模板（只读，未修改）。
     Template,
     /// 任何地方都不存在。
     Missing,
@@ -38,6 +40,7 @@ impl VmoptionsSource {
         match self {
             VmoptionsSource::Env => "环境变量",
             VmoptionsSource::User => "用户配置",
+            VmoptionsSource::Workspace => "工作区副本",
             VmoptionsSource::Template => "项目模板",
             VmoptionsSource::Missing => "缺失",
         }
@@ -51,25 +54,30 @@ pub fn list_known_products() -> Vec<(&'static str, &'static str)> {
 
 /// 检测当前用户全部已知产品的状态。
 pub fn detect_all(state: &WorkspaceState) -> Vec<ProductInfo> {
-    let root = state.get();
     list_known_products()
         .into_iter()
-        .map(|(id, name)| detect_one(id, name, &root))
+        .map(|(id, name)| detect_one(id, name, state))
         .collect()
 }
 
-pub fn detect_one(id: &str, name: &str, workdir: &std::path::Path) -> ProductInfo {
+pub fn detect_one(id: &str, name: &str, state: &WorkspaceState) -> ProductInfo {
     let env_var = platform::env_var_name(id);
+    let workdir = state.workdir();
+    let resource_root = state.resource_root();
 
-    let (path, source) = match platform::find_vmoptions_path(id, workdir) {
+    // 查找 vmoptions 文件：环境变量 → 用户默认 → 工作区副本 → 项目自带模板
+    let (path, source) = match find_vmoptions(id, &workdir, &resource_root) {
         Some(p) => {
             let is_env = std::env::var(&env_var)
                 .map(|v| std::path::Path::new(&v) == p.as_path())
                 .unwrap_or(false);
-            let is_template = p.starts_with(workdir);
+            let is_workspace = p.starts_with(&workdir);
+            let is_bundled = p.starts_with(&resource_root);
             let source = if is_env {
                 VmoptionsSource::Env
-            } else if is_template {
+            } else if is_workspace {
+                VmoptionsSource::Workspace
+            } else if is_bundled {
                 VmoptionsSource::Template
             } else {
                 VmoptionsSource::User
@@ -114,7 +122,46 @@ pub fn detect_one(id: &str, name: &str, workdir: &std::path::Path) -> ProductInf
     }
 }
 
-/// 工作区中 lib.jar 的路径。
-pub fn workspace_jar_path(workdir: &std::path::Path) -> PathBuf {
-    workdir.join("lib.jar")
+/// 查找 vmoptions 文件：环境变量 → 用户默认 → 工作区副本 → 项目自带模板。
+fn find_vmoptions(
+    product_id: &str,
+    workdir: &std::path::Path,
+    resource_root: &std::path::Path,
+) -> Option<PathBuf> {
+    let env_key = format!("{}_VM_OPTIONS", product_id.to_uppercase());
+    if let Ok(val) = std::env::var(&env_key) {
+        let p = PathBuf::from(&val);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    if let Some(path) = crate::platform::user_default_vmoptions(product_id) {
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    // 工作区副本（用户修改过的）
+    let workspace_copy = workdir
+        .join("vmoptions")
+        .join(format!("{}.vmoptions", product_id));
+    if workspace_copy.exists() {
+        return Some(workspace_copy);
+    }
+
+    // 项目自带模板（只读）
+    let template = resource_root
+        .join("vmoptions")
+        .join(format!("{}.vmoptions", product_id));
+    if template.exists() {
+        return Some(template);
+    }
+
+    None
+}
+
+/// 项目自带 lib.jar 的路径（始终从安装目录加载，不复制到工作区）。
+pub fn bundled_jar_path(resource_root: &std::path::Path) -> PathBuf {
+    resource_root.join("lib.jar")
 }

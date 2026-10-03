@@ -37,13 +37,12 @@ pub fn refresh_product_status(
     state: State<'_, WorkspaceState>,
     product_id: String,
 ) -> Result<ProductInfo, String> {
-    let workdir = state.get();
     let name = products::list_known_products()
         .into_iter()
         .find(|(id, _)| *id == product_id)
         .map(|(_, n)| n)
         .unwrap_or(product_id.as_str());
-    Ok(products::detect_one(&product_id, name, &workdir))
+    Ok(products::detect_one(&product_id, name, &state))
 }
 
 // -------- Install / Uninstall ----------------------------------------------
@@ -183,8 +182,8 @@ pub struct PluginJar {
 
 #[tauri::command]
 pub fn read_plugin_jars(state: State<'_, WorkspaceState>) -> Result<Vec<PluginJar>, String> {
-    let workdir = state.get();
-    let plugins_dir = workdir.join("plugins");
+    let resource_root = state.resource_root();
+    let plugins_dir = resource_root.join("plugins");
     let mut out = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
         for entry in entries.flatten() {
@@ -213,11 +212,12 @@ pub fn get_workspace_info(
     state: State<'_, WorkspaceState>,
     app: AppHandle,
 ) -> Result<WorkspaceInfo, String> {
-    let workdir = state.get();
-    let jar_path = workdir.join("lib.jar");
-    let vmoptions_dir = workdir.join("vmoptions");
-    let config_dir = workdir.join("config");
-    let plugins_dir = workdir.join("plugins");
+    let workdir = state.workdir();
+    let resource_root = state.resource_root();
+    let jar_path = resource_root.join("lib.jar");
+    let vmoptions_dir_resource = resource_root.join("vmoptions");
+    let config_dir_resource = resource_root.join("config");
+    let plugins_dir = resource_root.join("plugins");
 
     let mut plugin_jars = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
@@ -241,8 +241,8 @@ pub fn get_workspace_info(
             .into_iter()
             .map(|p| crate::platform::normalize_path_for_output(std::path::Path::new(&p)))
             .collect(),
-        vmoptions_dir: crate::platform::normalize_path_for_output(&vmoptions_dir),
-        config_dir: crate::platform::normalize_path_for_output(&config_dir),
+        vmoptions_dir: crate::platform::normalize_path_for_output(&vmoptions_dir_resource),
+        config_dir: crate::platform::normalize_path_for_output(&config_dir_resource),
         os: crate::platform::Os::current(),
         app_version: app.package_info().version.to_string(),
     })

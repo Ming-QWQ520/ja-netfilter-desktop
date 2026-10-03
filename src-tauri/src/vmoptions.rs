@@ -1,9 +1,7 @@
 //! vmoptions 文件读写，包含感知 javaagent 的编辑逻辑。
 //!
-//! 与原版 shell / VBS 安装脚本语义一致：安装时移除旧的
-//! `-javaagent:...ja-netfilter.jar...` 行，然后追加一行指向项目自带 jar 的新
-//! javaagent 行。若提供了自定义授权名称，则额外追加一行
-//! `-Dja.netfilter.name=<value>`。
+//! 读时优先工作区副本，回退项目自带模板。写时 copy-on-write 到工作区。
+//! lib.jar 始终使用项目自带路径（不复制到工作区）。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,34 +9,55 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use crate::platform::javaagent_line;
-use crate::workspace::{resolve_under_root, WorkspaceState};
+use crate::workspace::{self, WorkspaceState};
 
-/// 读取 vmoptions 文件的文本内容。`path_or_id` 可以是绝对路径，也可以是
-/// 资源根目录下的相对路径或纯产品 id。
+/// 读取 vmoptions 文件：优先工作区副本，回退项目自带模板。
+/// `path_or_id` 可以是绝对路径、工作区/项目根目录下的相对路径、或纯产品 id。
 pub fn read_text(state: &WorkspaceState, path_or_id: &str) -> Result<String> {
-    let path = resolve_path(state, path_or_id)?;
-    fs::read_to_string(&path)
-        .with_context(|| format!("读取 vmoptions 失败：{}", path.display()))
-}
-
-/// 将文本写回 vmoptions 文件。仅允许写入资源根目录之下，或绝对路径的现存文件。
-pub fn write_text(state: &WorkspaceState, path_or_id: &str, content: &str) -> Result<()> {
-    let path = resolve_path(state, path_or_id)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).ok();
+    // 绝对路径直接读
+    let p = Path::new(path_or_id);
+    if p.is_absolute() {
+        return fs::read_to_string(p)
+            .with_context(|| format!("读取 vmoptions 失败：{}", p.display()));
     }
-    fs::write(&path, content)
-        .with_context(|| format!("写入 vmoptions 失败：{}", path.display()))
+
+    // 展开 id 为相对路径
+    let rel = expand_id_to_rel(path_or_id);
+
+    // 通过 workspace::read_resource 读取（优先工作区，回退项目自带）
+    workspace::read_resource(state, &rel)
 }
 
-/// 将 vmoptions 重置为项目自带模板。
-pub fn reset_to_template(state: &WorkspaceState, path_or_id: &str) -> Result<()> {
-    // 直接清空 javaagent 行 + 自定义授权名称行；下次调用 install 时会重新写入。
-    let path = resolve_path(state, path_or_id)?;
-    let content = fs::read_to_string(&path).unwrap_or_default();
-    let stripped = strip_managed_lines(&content);
-    fs::write(&path, stripped)?;
+/// 将文本写回 vmoptions 文件：copy-on-write 到工作区。
+pub fn write_text(state: &WorkspaceState, path_or_id: &str, content: &str) -> Result<()> {
+    // 绝对路径直接写
+    let p = Path::new(path_or_id);
+    if p.is_absolute() {
+        if let Some(parent) = p.parent() {
+            fs::create_dir_all(parent).ok();
+        }
+        return fs::write(p, content)
+            .with_context(|| format!("写入 vmoptions 失败：{}", p.display()));
+    }
+
+    let rel = expand_id_to_rel(path_or_id);
+    workspace::write_resource(state, &rel, content)?;
     Ok(())
+}
+
+/// 重置 vmoptions：删除工作区副本，使后续读取回退到项目自带模板。
+pub fn reset_to_template(state: &WorkspaceState, path_or_id: &str) -> Result<()> {
+    // 绝对路径：若是工作区副本则删除；否则不做处理
+    let p = Path::new(path_or_id);
+    if p.is_absolute() {
+        if p.starts_with(state.workdir()) && p.exists() {
+            fs::remove_file(p)?;
+        }
+        return Ok(());
+    }
+
+    let rel = expand_id_to_rel(path_or_id);
+    workspace::reset_resource(state, &rel)
 }
 
 /// 追加或刷新 vmoptions 中的 `-javaagent:` 行，使其指向项目自带的 `lib.jar`。
@@ -100,22 +119,15 @@ fn strip_managed_lines(content: &str) -> String {
         .join("\n")
 }
 
-/// 解析 vmoptions 路径。接受：
-///   - 绝对路径
-///   - 资源根目录下的相对路径（如 `vmoptions/idea.vmoptions`）
-///   - 纯产品 id（如 `idea`）—— 展开为 `vmoptions/idea.vmoptions`
-fn resolve_path(state: &WorkspaceState, path_or_id: &str) -> Result<PathBuf> {
-    let p = Path::new(path_or_id);
-    if p.is_absolute() {
-        return Ok(p.to_path_buf());
-    }
-    let expanded = if !path_or_id.contains('/')
-        && !path_or_id.contains('\\')
-        && !path_or_id.ends_with(".vmoptions")
+/// 将纯产品 id（如 `idea`）展开为 `vmoptions/idea.vmoptions`。
+/// 若已包含路径分隔符或 `.vmoptions` 后缀，则原样返回。
+fn expand_id_to_rel(path_or_id: &str) -> String {
+    if path_or_id.contains('/')
+        || path_or_id.contains('\\')
+        || path_or_id.ends_with(".vmoptions")
     {
-        format!("vmoptions/{}.vmoptions", path_or_id)
-    } else {
         path_or_id.to_string()
-    };
-    resolve_under_root(state, &expanded)
+    } else {
+        format!("vmoptions/{}.vmoptions", path_or_id)
+    }
 }

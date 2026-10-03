@@ -1,13 +1,14 @@
 //! ja-netfilter 插件配置文件（`dns.conf`、`power.conf`、`url.conf`）。
-//! 直接读写项目自带 `resources/config/` 目录下的文件。
+//!
+//! 读时优先工作区副本，回退项目自带模板。写时 copy-on-write 到工作区。
+//! 不再预先复制任何文件到工作区。
 
-use std::fs;
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::workspace::{resolve_under_root, WorkspaceState};
+use crate::workspace::{self, WorkspaceState};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigFile {
@@ -23,12 +24,21 @@ pub const CONFIG_FILES: &[&str] = &[
     "config/url.conf",
 ];
 
-/// 枚举项目自带的配置文件（含文件大小）。
+/// 枚举配置文件。优先工作区副本，回退项目自带模板。
 pub fn list(state: &WorkspaceState) -> Result<Vec<ConfigFile>> {
     let mut out = Vec::new();
     for rel in CONFIG_FILES {
-        let path = resolve_under_root(state, rel)?;
-        let size = path.metadata().map(|m| m.len()).unwrap_or(0);
+        let workdir_copy = state.workdir().join(rel);
+        let bundled = state.resource_root().join(rel);
+        let (path, size) = if workdir_copy.exists() {
+            let size = workdir_copy.metadata().map(|m| m.len()).unwrap_or(0);
+            (workdir_copy, size)
+        } else if bundled.exists() {
+            let size = bundled.metadata().map(|m| m.len()).unwrap_or(0);
+            (bundled, size)
+        } else {
+            continue;
+        };
         out.push(ConfigFile {
             name: rel.rsplit('/').next().unwrap_or(rel).to_string(),
             relative_path: rel.to_string(),
@@ -38,22 +48,16 @@ pub fn list(state: &WorkspaceState) -> Result<Vec<ConfigFile>> {
     Ok(out)
 }
 
+/// 读取配置文件：优先工作区副本，回退项目自带模板。
 pub fn read_text(state: &WorkspaceState, relative_path: &str) -> Result<String> {
-    let path = resolve_under_root(state, relative_path)?;
-    fs::read_to_string(&path)
-        .with_context(|| format!("读取配置失败：{}", path.display()))
+    workspace::read_resource(state, relative_path)
 }
 
+/// 写入配置文件：copy-on-write 到工作区，再修改工作区副本。
 pub fn write_text(
     state: &WorkspaceState,
     relative_path: &str,
     content: &str,
 ) -> Result<PathBuf> {
-    let path = resolve_under_root(state, relative_path)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).ok();
-    }
-    fs::write(&path, content)
-        .with_context(|| format!("写入配置失败：{}", path.display()))?;
-    Ok(path)
+    workspace::write_resource(state, relative_path, content)
 }

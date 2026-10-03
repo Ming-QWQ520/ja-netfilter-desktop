@@ -1,6 +1,6 @@
 [package]
 name = "ja-netfilter-desktop"
-version = "0.1.2"
+version = "0.1.3"
 description = "Desktop GUI for ja-netfilter — manage JetBrains javaagent, plugins, configs and vmoptions"
 authors = ["Ming-QWQ520"]
 edition = "2021"
