@@ -1,0 +1,34 @@
+[package]
+name = "ja-netfilter-desktop"
+version = "0.1.5"
+description = "Desktop GUI for ja-netfilter — manage JetBrains javaagent, plugins, configs and vmoptions"
+authors = ["Ming-QWQ520"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "ja_netfilter_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-os = "2"
+tauri-plugin-process = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"
+dirs = "5"
+chrono = { version = "0.4", features = ["serde"] }
+once_cell = "1"
+parking_lot = "0.12"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
