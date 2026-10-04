@@ -137,7 +137,7 @@ pub fn install(
     Ok(InstallResult {
         product_id: product_id.to_string(),
         success: true,
-        vmoptions_path: Some(vm_path_display),
+        vmoptions_path: Some(vm_path_display.clone()),
         jar_path: platform::normalize_path_for_output(&jar),
         message: format!("javaagent 已写入{}（{}）", method, vm_path_display),
     })
