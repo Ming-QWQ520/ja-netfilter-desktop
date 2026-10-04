@@ -1,23 +1,9 @@
 //! 跨平台安装 / 卸载逻辑。
 //!
-//! 本模块替代原版的 shell / VBS 脚本（`scripts/install.sh`、
-//! `scripts/install-current-user.vbs` 等），用一个 Rust 实现完成完全相同的步骤：
-//!
-//! 安装流程：
-//!   1. 查找 vmoptions 文件（环境变量 → 用户默认 → 工作区副本 → 项目自带模板）。
-//!   2. 若找到的是项目自带模板（只读），先 copy-on-write 到工作区再编辑。
-//!   3. lib.jar 始终使用项目自带路径（不复制到工作区）—— JVM 加载 javaagent
-//!      不需要写权限。
-//!   4. 移除任何已有的指向 ja-netfilter 的 `-javaagent:` 行。
-//!   5. 追加 `-javaagent:<resource_root>/lib.jar=jetbrains`。
-//!   6. 若提供了 `license_name`，则同时追加 `-Dja.netfilter.name=<license_name>`。
-//!   7. 持久化 `<PRODUCT>_VM_OPTIONS` 环境变量，使 IDE 下次启动时读取该文件。
-//!
-//! 卸载流程：
-//!   1. 查找 vmoptions 文件（同上）。
-//!   2. 若是项目自带模板，说明从未安装过，直接返回成功。
-//!   3. 否则在工作区副本或用户文件中移除 javaagent 行。
-//!   4. 清理环境变量。
+//! 安装时直接查找并编辑 IDE 自带的 vmoptions 文件（追加 -javaagent 行），
+//! 不再依赖环境变量。若未找到 IDE 自带 vmoptions，回退到工作区模板。
+//! lib.jar 始终使用项目自带路径（不复制到工作区）。
+//! Windows 上 setx 后广播 WM_SETTINGCHANGE，确保 IDE 能立即读取新环境变量。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -60,27 +46,31 @@ pub fn install(
         });
     }
 
-    // 查找 vmoptions 文件
-    let (vm_path, is_bundled) = match find_vmoptions(product_id, &workdir, &resource_root) {
-        Some((p, bundled)) => (p, bundled),
-        None => {
+    // 优先查找 IDE 自带的 vmoptions 文件（最可靠的方式）
+    let ide_vmoptions = find_ide_vmoptions(product_id);
+
+    let (vm_path_to_edit, used_ide_file) = if let Some(ref ide_path) = ide_vmoptions {
+        // 找到了 IDE 自带的 vmoptions 文件，直接编辑它
+        (ide_path.clone(), true)
+    } else {
+        // 未找到 IDE 自带 vmoptions，回退到工作区模板
+        let template = resource_root
+            .join("vmoptions")
+            .join(format!("{}.vmoptions", product_id));
+        if !template.exists() {
             return Ok(InstallResult {
                 product_id: product_id.to_string(),
                 success: false,
                 vmoptions_path: None,
                 jar_path: platform::normalize_path_for_output(&jar),
                 message: format!(
-                    "未找到 {} 的 vmoptions 文件 —— 请先安装对应 IDE，或使用项目自带模板。",
+                    "未找到 {} 的 vmoptions 文件，请先安装对应 IDE。",
                     product_id
                 ),
-            })
+            });
         }
-    };
-
-    // 若是项目自带模板（只读），先 copy-on-write 到工作区再编辑。
-    let vm_path_to_edit = if is_bundled {
-        match copy_on_write(&vm_path, &workdir, product_id) {
-            Ok(p) => p,
+        match copy_on_write(&template, &workdir, product_id) {
+            Ok(p) => (p, false),
             Err(e) => {
                 return Ok(InstallResult {
                     product_id: product_id.to_string(),
@@ -91,42 +81,47 @@ pub fn install(
                 })
             }
         }
-    } else {
-        vm_path
     };
 
-    // 编辑 vmoptions：先剥离旧的 javaagent 行，再追加新的；若有自定义授权
-    // 名称，则同时追加 -Dja.netfilter.name=<value>。
+    // 编辑 vmoptions：先剥离旧的 javaagent 行，再追加新的
     vmoptions::ensure_javaagent(&vm_path_to_edit, &jar, license_name)?;
 
-    // 持久化环境变量
+    // 同时设置环境变量（双保险）
     let env_var = platform::env_var_name(product_id);
-    let vm_path_str = platform::normalize_path_for_output(&vm_path_to_edit);
+    let vm_path_native = vm_path_to_edit.to_string_lossy().to_string();
     match Os::current() {
         Os::Macos => {
             std::process::Command::new("launchctl")
-                .args(["setenv", &env_var, &vm_path_str])
+                .args(["setenv", &env_var, &vm_path_native])
                 .status()
                 .ok();
-            write_shell_rc(&env_var, &vm_path_str)?;
+            write_shell_rc(&env_var, &vm_path_native)?;
         }
         Os::Linux => {
-            write_shell_rc(&env_var, &vm_path_str)?;
+            write_shell_rc(&env_var, &vm_path_native)?;
         }
         Os::Windows => {
+            // setx 持久化环境变量到注册表
             std::process::Command::new("setx")
-                .args([&env_var, &vm_path_str])
+                .args([&env_var, &vm_path_native])
                 .status()
                 .ok();
+            // 广播 WM_SETTINGCHANGE，让 Windows Explorer 和其他进程立即感知
+            // 环境变量变更。否则用户需要注销/重启才能生效。
+            broadcast_env_change();
         }
     }
+
+    let vm_path_display = platform::normalize_path_for_output(&vm_path_to_edit);
+    let method = if used_ide_file { "IDE 自带 vmoptions" } else { "工作区模板" };
 
     logger::append(
         logger::Level::Info,
         &format!(
-            "[{}] 已安装 javaagent -> {}{}",
+            "[{}] 已安装 javaagent -> {}（{}）{}",
             product_id,
-            vm_path_str,
+            vm_path_display,
+            method,
             if let Some(n) = license_name {
                 format!("（自定义授权名称：{}）", n)
             } else {
@@ -138,44 +133,39 @@ pub fn install(
     Ok(InstallResult {
         product_id: product_id.to_string(),
         success: true,
-        vmoptions_path: Some(vm_path_str),
+        vmoptions_path: Some(vm_path_display.clone()),
         jar_path: platform::normalize_path_for_output(&jar),
-        message: "javaagent 已写入 vmoptions 文件".into(),
+        message: format!("javaagent 已写入{}（{}）", method, vm_path_display),
     })
 }
 
 /// 为单个产品卸载 javaagent。
 pub fn uninstall(state: &WorkspaceState, product_id: &str) -> Result<InstallResult> {
     let resource_root = state.resource_root();
-    let workdir = state.workdir();
     let jar = bundled_jar_path(&resource_root);
 
-    let (vm_path, is_bundled) = match find_vmoptions(product_id, &workdir, &resource_root) {
-        Some((p, bundled)) => (p, bundled),
-        None => {
-            return Ok(InstallResult {
-                product_id: product_id.to_string(),
-                success: false,
-                vmoptions_path: None,
-                jar_path: platform::normalize_path_for_output(&jar),
-                message: format!("未找到 {} 的 vmoptions 文件，无需卸载。", product_id),
-            })
-        }
-    };
+    // 查找所有可能的 vmoptions 文件并清理
+    let mut cleaned_paths: Vec<PathBuf> = Vec::new();
 
-    // 若是项目自带模板，说明从未安装过，直接返回成功。
-    if is_bundled {
-        return Ok(InstallResult {
-            product_id: product_id.to_string(),
-            success: true,
-            vmoptions_path: Some(platform::normalize_path_for_output(&vm_path)),
-            jar_path: platform::normalize_path_for_output(&jar),
-            message: "vmoptions 为项目自带模板（只读），未安装过，无需卸载".into(),
-        });
+    // 1. IDE 自带的 vmoptions
+    if let Some(ide_path) = find_ide_vmoptions(product_id) {
+        if ide_path.exists() {
+            vmoptions::strip_javaagent(&ide_path)?;
+            cleaned_paths.push(ide_path);
+        }
     }
 
-    vmoptions::strip_javaagent(&vm_path)?;
+    // 2. 工作区副本
+    let workdir = state.workdir();
+    let workspace_copy = workdir
+        .join("vmoptions")
+        .join(format!("{}.vmoptions", product_id));
+    if workspace_copy.exists() {
+        vmoptions::strip_javaagent(&workspace_copy)?;
+        cleaned_paths.push(workspace_copy);
+    }
 
+    // 清理环境变量
     let env_var = platform::env_var_name(product_id);
     if Os::current() == Os::Macos {
         std::process::Command::new("launchctl")
@@ -185,59 +175,225 @@ pub fn uninstall(state: &WorkspaceState, product_id: &str) -> Result<InstallResu
     }
     remove_shell_rc(&env_var)?;
 
-    let vm_path_str = platform::normalize_path_for_output(&vm_path);
+    // Windows 上删除环境变量并广播
+    if Os::current() == Os::Windows {
+        std::process::Command::new("reg")
+            .args(["delete", "HKCU\\Environment", "/v", &env_var, "/f"])
+            .status()
+            .ok();
+        broadcast_env_change();
+    }
+
+    let paths_display: Vec<String> = cleaned_paths
+        .iter()
+        .map(|p| platform::normalize_path_for_output(p))
+        .collect();
+
     logger::append(
         logger::Level::Info,
-        &format!("[{}] 已从 {} 移除 javaagent", product_id, vm_path_str),
+        &format!(
+            "[{}] 已从 {} 处移除 javaagent",
+            product_id,
+            if paths_display.is_empty() {
+                "无".to_string()
+            } else {
+                paths_display.join(", ")
+            }
+        ),
     );
 
     Ok(InstallResult {
         product_id: product_id.to_string(),
         success: true,
-        vmoptions_path: Some(vm_path_str),
+        vmoptions_path: cleaned_paths.first().map(|p| platform::normalize_path_for_output(p)),
         jar_path: platform::normalize_path_for_output(&jar),
-        message: "已移除 javaagent 行".into(),
+        message: format!("已从 {} 处移除 javaagent 行", paths_display.len()),
     })
 }
 
-/// 查找 vmoptions 文件。返回 (path, is_bundled) —— is_bundled 表示是否为
-/// 项目自带模板（只读）。
-fn find_vmoptions(
-    product_id: &str,
-    workdir: &Path,
-    resource_root: &Path,
-) -> Option<(PathBuf, bool)> {
-    let env_key = format!("{}_VM_OPTIONS", product_id.to_uppercase());
-    if let Ok(val) = std::env::var(&env_key) {
-        let p = PathBuf::from(&val);
-        if p.exists() {
-            return Some((p, false));
+/// 查找 IDE 自带的 vmoptions 文件。Windows 搜索 %APPDATA%\JetBrains\ 和
+/// C:\Program Files\JetBrains\ 等目录。macOS 搜索 ~/Library/Application Support/JetBrains/。
+/// Linux 搜索 ~/.config/Jetbrains/。使用前缀匹配查找版本号目录。
+pub fn find_ide_vmoptions(product_id: &str) -> Option<PathBuf> {
+    let os = Os::current();
+
+    // vmoptions 文件名候选（Windows 用 .exe.vmoptions，其他平台用 .vmoptions）
+    let vmoptions_names: Vec<String> = match os {
+        Os::Windows => vec![
+            format!("{}64.exe.vmoptions", product_id),
+            format!("{}.exe.vmoptions", product_id),
+            format!("{}.vmoptions", product_id),
+        ],
+        _ => vec![format!("{}.vmoptions", product_id)],
+    };
+
+    // 产品目录名前缀映射（AppData 中的目录名前缀）
+    // 例如 IntelliJ IDEA 在 AppData 中是 IntelliJIdea2024.2
+    let dir_prefix = product_dir_prefix(product_id);
+
+    // 搜索目录列表
+    let search_roots: Vec<PathBuf> = match os {
+        Os::Windows => {
+            let mut roots = Vec::new();
+            // %APPDATA%\JetBrains\
+            if let Some(appdata) = dirs::config_dir() {
+                roots.push(appdata.join("JetBrains"));
+            }
+            // C:\Program Files\JetBrains\ (try common drives)
+            for drive in &["C:", "D:", "E:"] {
+                roots.push(PathBuf::from(format!("{}\\Program Files\\JetBrains", drive)));
+                roots.push(PathBuf::from(format!("{}\\Program Files (x86)\\JetBrains", drive)));
+            }
+            // %LOCALAPPDATA%\JetBrains\Toolbox\apps\ (Toolbox installation)
+            if let Some(local) = dirs::data_local_dir() {
+                roots.push(local.join("JetBrains").join("Toolbox").join("apps"));
+            }
+            // %LOCALAPPDATA%\Programs\
+            if let Some(local) = dirs::data_local_dir() {
+                roots.push(local.join("Programs"));
+            }
+            roots
         }
-    }
-
-    if let Some(path) = platform::user_default_vmoptions(product_id) {
-        if path.exists() {
-            return Some((path, false));
+        Os::Macos => {
+            let mut roots = Vec::new();
+            if let Some(home) = dirs::home_dir() {
+                roots.push(home.join("Library").join("Application Support").join("JetBrains"));
+            }
+            // /Applications/ for IDE install dirs
+            roots.push(PathBuf::from("/Applications"));
+            roots
         }
-    }
+        Os::Linux => {
+            let mut roots = Vec::new();
+            if let Some(config) = dirs::config_dir() {
+                roots.push(config.join("JetBrains"));
+            }
+            // /opt/ for IDE install dirs
+            roots.push(PathBuf::from("/opt"));
+            // ~/.local/share/JetBrains/
+            if let Some(home) = dirs::home_dir() {
+                roots.push(home.join(".local").join("share").join("JetBrains"));
+            }
+            roots
+        }
+    };
 
-    // 工作区副本（用户修改过的）
-    let workspace_copy = workdir
-        .join("vmoptions")
-        .join(format!("{}.vmoptions", product_id));
-    if workspace_copy.exists() {
-        return Some((workspace_copy, false));
-    }
+    // 在每个搜索根目录中查找 vmoptions 文件
+    for search_root in &search_roots {
+        if !search_root.exists() {
+            continue;
+        }
+        if let Ok(entries) = fs::read_dir(search_root) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let dir_name = path.file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("");
 
-    // 项目自带模板（只读）
-    let template = resource_root
-        .join("vmoptions")
-        .join(format!("{}.vmoptions", product_id));
-    if template.exists() {
-        return Some((template, true));
+                    // 检查目录名是否匹配产品前缀（前缀匹配，忽略大小写）
+                    let dir_matches = dir_name.to_lowercase().starts_with(&dir_prefix.to_lowercase());
+
+                    if dir_matches {
+                        // 在匹配的目录中查找 vmoptions 文件
+                        for name in &vmoptions_names {
+                            let vmoptions = path.join(name);
+                            if vmoptions.exists() {
+                                return Some(vmoptions);
+                            }
+                            // 在 bin 子目录中（Windows IDE 安装目录结构）
+                            let vmoptions_bin = path.join("bin").join(name);
+                            if vmoptions_bin.exists() {
+                                return Some(vmoptions_bin);
+                            }
+                        }
+                    }
+
+                    // Toolbox 安装：在 apps/<product>/ch-0/<version>/bin/ 下
+                    // 搜索更深一层
+                    if search_root.ends_with("apps") {
+                        if let Ok(sub_entries) = fs::read_dir(&path) {
+                            for sub_entry in sub_entries.flatten() {
+                                let sub_path = sub_entry.path();
+                                if sub_path.is_dir() {
+                                    // ch-0 目录
+                                    let ch_dir = sub_path.join("ch-0");
+                                    if ch_dir.exists() {
+                                        if let Ok(ch_entries) = fs::read_dir(&ch_dir) {
+                                            for ch_entry in ch_entries.flatten() {
+                                                let ver_path = ch_entry.path();
+                                                if ver_path.is_dir() {
+                                                    for name in &vmoptions_names {
+                                                        let vmoptions = ver_path.join("bin").join(name);
+                                                        if vmoptions.exists() {
+                                                            return Some(vmoptions);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     None
+}
+
+/// 产品 ID 到 JetBrains AppData 目录名前缀的映射。
+/// 例如 idea -> IntelliJIdea, pycharm -> PyCharm, etc.
+fn product_dir_prefix(product_id: &str) -> String {
+    match product_id {
+        "idea" => "IntelliJIdea".to_string(),
+        "clion" => "CLion".to_string(),
+        "phpstorm" => "PhpStorm".to_string(),
+        "goland" => "GoLand".to_string(),
+        "pycharm" => "PyCharm".to_string(),
+        "webstorm" => "WebStorm".to_string(),
+        "webide" => "WebStorm".to_string(),
+        "rider" => "Rider".to_string(),
+        "datagrip" => "DataGrip".to_string(),
+        "rubymine" => "RubyMine".to_string(),
+        "dataspell" => "DataSpell".to_string(),
+        "aqua" => "Aqua".to_string(),
+        "rustrover" => "RustRover".to_string(),
+        "gateway" => "JetBrainsGateway".to_string(),
+        "jetbrains_client" => "JetBrainsClient".to_string(),
+        "jetbrainsclient" => "JetBrainsClient".to_string(),
+        "studio" => "AndroidStudio".to_string(),
+        "devecostudio" => "DevEcoStudio".to_string(),
+        _ => product_id.to_string(),
+    }
+}
+
+/// Windows 上广播 WM_SETTINGCHANGE 消息，让所有顶级窗口（包括 Explorer）
+/// 感知环境变量变更。使用 PowerShell 调用 Win32 API。
+fn broadcast_env_change() {
+    #[cfg(target_os = "windows")]
+    {
+        let ps_script = r#"
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32Env {
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam,
+        uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+}
+"@ -ErrorAction SilentlyContinue
+[Win32Env]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]([UIntPtr]::Zero)) | Out-Null
+"#;
+        std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", ps_script])
+            .status()
+            .ok();
+    }
 }
 
 /// Copy-on-write：将项目自带的 vmoptions 模板复制到工作区，返回工作区副本路径。
