@@ -10,6 +10,8 @@ import {
   DEFAULT_EXPIRY_DATE,
 } from "@/stores/license";
 import { useToast } from "@/stores/toast";
+import { api } from "@/api";
+import type { SyncSummary } from "@/types";
 
 const t = useT();
 const uiStore = ui();
@@ -19,6 +21,8 @@ const toast = useToast();
 
 const licenseInput = ref(license.name);
 const expiryInput = ref(license.expiry);
+const syncing = ref(false);
+const syncResult = ref<SyncSummary | null>(null);
 
 const info = computed(() => settings.info);
 
@@ -47,6 +51,25 @@ function saveLicense() {
   licenseInput.value = license.name;
   expiryInput.value = license.expiry;
   toast.success(t("license_saved"));
+}
+
+async function syncAgent() {
+  if (syncing.value) return;
+  syncing.value = true;
+  syncResult.value = null;
+  try {
+    const s = await api.syncAgentResources();
+    syncResult.value = s;
+    if (s.failed.length === 0) {
+      toast.success(s.message || t("agent_sync_done").replace("{msg}", ""));
+    } else {
+      toast.warn(s.message);
+    }
+  } catch (e: any) {
+    toast.error(`${t("agent_sync_fail")}: ${String(e)}`);
+  } finally {
+    syncing.value = false;
+  }
 }
 
 async function reveal(path: string) {
@@ -137,6 +160,27 @@ onMounted(() => settings.refresh());
             <button class="md-btn md-btn--tonal md-btn--sm" @click="saveLicense">
               {{ t("save") }}
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent 资源同步 -->
+      <div class="md-card md-card--elevated">
+        <h3>{{ t("agent_sync_title") }}</h3>
+        <div class="row">
+          <div class="row-label">
+            <span class="row-title">ckey.run</span>
+            <p class="row-hint">{{ t("agent_sync_desc") }}</p>
+          </div>
+          <div class="row-value">
+            <button
+              class="md-btn md-btn--tonal md-btn--sm"
+              :disabled="syncing"
+              @click="syncAgent"
+            >
+              {{ syncing ? t("agent_sync_running") : t("agent_sync_btn") }}
+            </button>
+            <p v-if="syncResult" class="row-hint sync-result">{{ syncResult.message }}</p>
           </div>
         </div>
       </div>
@@ -290,6 +334,9 @@ onMounted(() => settings.refresh());
 }
 .license-editor .md-field {
   flex: 1;
+}
+.sync-result {
+  color: var(--md-on-surface-variant);
 }
 
 .path-row {

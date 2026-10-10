@@ -8,6 +8,7 @@ import type {
   LogEntry,
   PluginJar,
   ProductInfo,
+  SyncSummary,
   WorkspaceInfo,
 } from "@/types";
 
@@ -32,6 +33,9 @@ export const api = {
   // 自定义授权（重新生成 <prd>.key，无需重装）
   generateLicenseKeys: (licenseName?: string, licenseExpiry?: string) =>
     invoke<LicenseResult[]>("generate_license_keys", { licenseName, licenseExpiry }),
+
+  // 同步最新 agent 资源（ckey.run 当前版本；安装流程内也会自动执行）
+  syncAgentResources: () => invoke<SyncSummary>("sync_agent_resources"),
 
   // vmoptions（path_or_id：绝对路径或产品 id）
   readVmoptions: (pathOrId: string) =>

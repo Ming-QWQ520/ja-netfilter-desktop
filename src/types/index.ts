@@ -37,6 +37,15 @@ export interface LicenseResult {
   message: string;
 }
 
+/** agent 资源联网同步结果（对齐 ckey.run 当前版本）。 */
+export interface SyncSummary {
+  ok: boolean;
+  updated: string[];
+  unchanged: number;
+  failed: string[];
+  message: string;
+}
+
 export interface ConfigFile {
   name: string;
   relative_path: string;

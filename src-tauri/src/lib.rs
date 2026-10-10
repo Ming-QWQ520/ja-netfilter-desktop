@@ -10,6 +10,7 @@
 //!   5. 注册全部命令（含自定义授权生成 generate_license_keys）
 
 mod agent_home;
+mod agent_sync;
 mod commands;
 mod config;
 mod installer;
@@ -112,6 +113,7 @@ pub fn run() {
             uninstall_all_products,
             cleanup_env_vars,
             generate_license_keys,
+            sync_agent_resources,
             read_vmoptions,
             write_vmoptions,
             strip_vmoptions,

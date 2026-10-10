@@ -459,6 +459,11 @@ pub fn install_batch(state: &WorkspaceState, product_ids: &[String]) -> Vec<Inst
     }
     let refs: Vec<&str> = product_ids.iter().map(|s| s.as_str()).collect();
 
+    // 安装前同步最新 agent 资源（对齐 ckey_script.ps1 的每次下载语义）。
+    // 老打包的 power.conf 验不了 ckey.run 新生成的授权 key（v0.1.0 现场缺陷），
+    // 必须先刷新到当前版本；失败仅告警，安装继续使用自带资源。
+    let _ = crate::agent_sync::sync_latest(state);
+
     match Os::current() {
         Os::Windows => windows_install(&refs, state),
         _ => {

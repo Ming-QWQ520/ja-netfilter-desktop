@@ -70,9 +70,12 @@ jobs:
             - Windows x64：`*-setup.exe`（NSIS，默认按当前用户安装，无需管理员）/ `*.msi`
 
             ### 本版修复
+            - 修复激活失效：自带的 power.conf 等资源过时（旧规则无法验证 ckey.run
+              新生成的授权 key）。现在**安装前自动从 ckey.run 同步最新
+              agent / 配置 / 插件**（与 ckey_script.ps1 同源同版本，就地更新、
+              仍零复制），设置页新增「同步最新 Agent」手动按钮。
             - 修复 Windows 下 `-javaagent` 写入 verbatim 路径（`//?/E:/...`）导致
               IDE 启动报 "processing of -javaagent failed" 无法启动的问题。
-              **安装新版本后请对目标 IDE 点击「重装」，再次打开 IDE 即可。**
 
             内置 ja-netfilter agent（lib.jar / 插件 / 配置），安装后**就地引用、零复制**。
             安装时自动清理旧的 `-javaagent` 行与 `<PRODUCT>_VM_OPTIONS` 环境变量，

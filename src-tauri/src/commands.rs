@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
+use crate::agent_sync::{self, SyncSummary};
 use crate::config::{self, ConfigFile};
 use crate::installer::{self, InstallResult};
 use crate::license::{self, LicenseResult};
@@ -206,6 +207,19 @@ pub async fn generate_license_keys(
         );
         report_license_results(&results);
         Ok(results)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// -------- Agent 资源同步 ----------------------------------------------------
+
+/// 手动同步最新 agent 资源（设置页按钮；安装流程内也会自动执行一次）。
+#[tauri::command]
+pub async fn sync_agent_resources(app: AppHandle) -> Result<SyncSummary, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<WorkspaceState>();
+        Ok(agent_sync::sync_latest(&state))
     })
     .await
     .map_err(|e| e.to_string())?
