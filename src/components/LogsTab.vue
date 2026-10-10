@@ -15,6 +15,7 @@ const store = useLogsStore();
 const autoscroll = ref(true);
 const streamEl = ref<HTMLElement | null>(null);
 const unlisten = ref<(() => void) | null>(null);
+const logFilePath = ref<string | null>(null);
 
 const filters: { id: LogLevel | "all"; labelKey: string }[] = [
   { id: "all", labelKey: "log_all" },
@@ -59,8 +60,21 @@ async function clearAll() {
   toast.info(t("logs_cleared"));
 }
 
+async function openLogDir() {
+  if (!logFilePath.value) return;
+  try {
+    await api.revealInFinder(logFilePath.value);
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
+
 onMounted(async () => {
   await store.refresh();
+  api
+    .getLogFilePath()
+    .then((p) => (logFilePath.value = p))
+    .catch(() => {});
   // Rust 端事件推送（v0.2.0 修复：旧版从未发出）
   unlisten.value = await listen<LogEntry>("log://entry", (event) => {
     store.push(event.payload);
@@ -115,6 +129,20 @@ watch(
           {{ t("clear") }}
         </button>
       </div>
+    </div>
+
+    <div class="log-file-row">
+      <span class="log-file-label">{{ t("log_file") }}</span>
+      <span class="log-file-path mono selectable">
+        {{ logFilePath || t("log_file_missing") }}
+      </span>
+      <button
+        v-if="logFilePath"
+        class="md-btn md-btn--tonal md-btn--sm"
+        @click="openLogDir"
+      >
+        {{ t("log_open_dir") }}
+      </button>
     </div>
 
     <div ref="streamEl" class="log-stream mono selectable">
@@ -180,6 +208,32 @@ watch(
 .meta-actions {
   display: flex;
   gap: 6px;
+}
+
+.log-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.log-file-label {
+  font-size: 12.5px;
+  color: var(--md-on-surface-variant);
+  flex-shrink: 0;
+}
+.log-file-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  background: var(--md-surface-container);
+  border-radius: var(--md-corner-xs);
+  padding: 4px 8px;
 }
 
 .log-stream {

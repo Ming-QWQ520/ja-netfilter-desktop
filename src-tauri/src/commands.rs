@@ -369,6 +369,12 @@ pub fn clear_log_history() -> Result<(), String> {
     Ok(())
 }
 
+/// 当前磁盘日志文件路径（前端展示 + 一键打开目录）。
+#[tauri::command]
+pub fn get_log_file_path() -> Result<Option<String>, String> {
+    Ok(logger::log_file_path())
+}
+
 #[tauri::command]
 pub fn app_version(app: AppHandle) -> Result<String, String> {
     Ok(app.package_info().version.to_string())

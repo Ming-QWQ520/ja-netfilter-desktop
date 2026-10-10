@@ -92,7 +92,11 @@ function Find-ProductLocations([string]$prd) {
     if ($prd -eq 'studio') { $excludeLower = 'devecostudio' }
 
     foreach ($spec in $rootSpecs) {
-        if (-not (Test-Path -LiteralPath $spec.root)) { continue }
+        if (-not (Test-Path -LiteralPath $spec.root)) {
+            Add-Log "debug" "scan root not present: $($spec.root)"
+            continue
+        }
+        Add-Log "debug" "scan root: $($spec.root)"
         $dirs = Get-ChildItem -LiteralPath $spec.root -Directory -ErrorAction SilentlyContinue | Where-Object {
             $n = $_.Name.ToLower()
             if ($n.Contains($nameLower)) {
@@ -103,6 +107,7 @@ function Find-ProductLocations([string]$prd) {
         }
 
         foreach ($dir in $dirs) {
+            Add-Log "debug" "product config dir: $($dir.FullName)"
             $entry = @{
                 name             = $dir.Name
                 configDir        = $dir.FullName
@@ -118,11 +123,15 @@ function Find-ProductLocations([string]$prd) {
                     $installDir = (Get-Content -LiteralPath $homeFile -TotalCount 1 -ErrorAction Stop).Trim()
                     if ($installDir -and (Test-Path -LiteralPath $installDir)) {
                         $entry.homeDir = $installDir
+                        Add-Log "debug" "install dir via .home: $installDir"
                         $binDir = Join-Path $installDir "bin"
                         if (Test-Path -LiteralPath $binDir) {
                             $vms = Get-ChildItem -LiteralPath $binDir -Filter *.vmoptions -Recurse -File -ErrorAction SilentlyContinue
                             $entry.binVmOptions = @($vms | ForEach-Object { $_.FullName })
+                            Add-Log "debug" "bin vmoptions found: $($entry.binVmOptions.Count) file(s)"
                         }
+                    } else {
+                        Add-Log "warn" ".home target not found: $installDir (product dir: $($dir.Name))"
                     }
                 } catch {
                     Add-Log "warn" "read .home failed for $($dir.Name): $($_.Exception.Message)"
@@ -144,6 +153,7 @@ function Find-ProductLocations([string]$prd) {
                     if (Test-Path -LiteralPath $p) { $found += $p }
                 }
                 $entry.roamingVmOptions = $found
+                Add-Log "debug" "roaming vmoptions found: $($found.Count) file(s) under $roamingDir"
             }
 
             $null = $out.Add($entry)
@@ -287,6 +297,7 @@ switch ($Mode) {
             break
         }
         $agentSafe = Get-ShortPath $AgentJar
+        Add-Log "debug" "agent jar (resolved): $agentSafe"
         if ($script:UnsafePathRegex.IsMatch($agentSafe)) {
             # 8.3 short path unavailable (disabled volume?) -> let Rust fall back
             # to copying the agent into a space-free directory and retry.
@@ -298,6 +309,7 @@ switch ($Mode) {
         Add-Log "info" "agent line: $agentLine"
 
         foreach ($prd in $productList) {
+            Add-Log "debug" "processing product: $prd"
             # 0. env cleanup first (ckey_script.ps1 removes before processing)
             $removedEnv = @(Remove-ProductEnv $prd)
 

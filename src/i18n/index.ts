@@ -104,8 +104,8 @@ export const dict: Dict = {
 
   // Logs
   logs_desc: {
-    zh: "安装/卸载/文件读写操作实时同步（Rust 事件推送）。",
-    en: "Install/uninstall/IO operations streamed live via Rust events.",
+    zh: "安装/卸载/文件读写操作实时同步（Rust 事件推送），并持久化到磁盘日志文件。",
+    en: "Install/uninstall/IO operations streamed live via Rust events and persisted to a log file.",
   },
   log_all: { zh: "全部", en: "All" },
   log_debug: { zh: "调试", en: "Debug" },
@@ -117,6 +117,9 @@ export const dict: Dict = {
   copy: { zh: "复制", en: "Copy" },
   clear: { zh: "清空", en: "Clear" },
   no_logs: { zh: "暂无日志", en: "No logs yet" },
+  log_file: { zh: "日志文件", en: "Log file" },
+  log_open_dir: { zh: "打开目录", en: "Open folder" },
+  log_file_missing: { zh: "（尚未生成）", en: "(not created yet)" },
 
   // Settings
   appearance: { zh: "外观", en: "Appearance" },

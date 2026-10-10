@@ -116,6 +116,13 @@ fn materialize_ps_script() -> Result<PathBuf> {
 /// 运行 PowerShell 核心，解析 JSON 输出，并把日志灌入应用日志。
 fn run_ps_core(mode: &str, products: &[&str], agent_jar: &Path) -> Result<PsCoreOutput> {
     let script = materialize_ps_script()?;
+    logger::debug(&format!(
+        "PowerShell 启动：mode={}，products=[{}]，agent={}，script={}",
+        mode,
+        products.join(","),
+        platform::normalize_path_for_output(agent_jar),
+        platform::normalize_path_for_output(&script),
+    ));
     let output = Command::new("powershell.exe")
         .args([
             "-NoProfile",
@@ -137,8 +144,26 @@ fn run_ps_core(mode: &str, products: &[&str], agent_jar: &Path) -> Result<PsCore
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
+    logger::debug(&format!(
+        "PowerShell 退出：code={}，stdout {} 字节",
+        output.status.code().unwrap_or(-1),
+        stdout.len()
+    ));
+    // stderr 在成功时也可能是诊断输出（PS 的 Write-Error / 告警），必须完整透传
+    if !stderr.trim().is_empty() {
+        logger::warn(&format!(
+            "PowerShell stderr：{}",
+            truncate_str(stderr.trim(), 2000)
+        ));
+    }
+
     // stdout 必须是纯 JSON；PS 把诊断信息写到 stderr
     let parsed: PsCoreOutput = serde_json::from_str(stdout.trim()).map_err(|e| {
+        logger::error(&format!(
+            "PowerShell 输出解析失败：{}；stdout 尾部：{}",
+            e,
+            truncate_str(stdout.trim(), 1000)
+        ));
         anyhow::anyhow!(
             "PowerShell 输出解析失败：{}；stderr: {}",
             e,
@@ -160,6 +185,15 @@ fn run_ps_core(mode: &str, products: &[&str], agent_jar: &Path) -> Result<PsCore
     Ok(parsed)
 }
 
+/// 截断过长文本（日志友好）。
+fn truncate_str(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let cut: String = s.chars().take(max).collect();
+    format!("{}…（已截断）", cut)
+}
+
 /// PS 输出是否报告了"agent 路径不安全（8.3 短路径也救不了）"。
 fn ps_reports_unsafe_path(out: &PsCoreOutput) -> bool {
     out.logs
@@ -167,14 +201,24 @@ fn ps_reports_unsafe_path(out: &PsCoreOutput) -> bool {
         .any(|l| l.message.contains("unsafe-agent-path"))
 }
 
+/// 从 PS 日志中提取最后一条 error 级消息（作为整体失败的可读原因）。
+fn ps_failure_reason(out: &PsCoreOutput) -> String {
+    out.logs
+        .iter()
+        .rev()
+        .find(|l| l.level == "error" || l.level == "warn")
+        .map(|l| l.message.clone())
+        .unwrap_or_else(|| "未知原因（无 error 日志）".to_string())
+}
+
 /// Windows 安装：先用就地资源路径跑 PS；若路径不安全（8.3 不可用），
-/// 兜底复制到无空格目录后重试一次。
+/// 兕底复制到无空格目录后重试一次。
 fn windows_install(refs: &[&str], state: &WorkspaceState) -> Vec<InstallResult> {
     let jar = state.agent_jar.clone();
 
-    let run = |jar: &Path, unsafe_flag: &mut bool| -> Option<Vec<InstallResult>> {
+    let run = |jar: &Path, unsafe_flag: &mut bool, reason: &mut Option<String>| -> Option<Vec<InstallResult>> {
         match run_ps_core("install", refs, jar) {
-            Ok(out) if out.ok => Some(
+            Ok(out) if out.ok && !out.results.is_empty() => Some(
                 out.results
                     .into_iter()
                     .map(|r| InstallResult {
@@ -187,54 +231,103 @@ fn windows_install(refs: &[&str], state: &WorkspaceState) -> Vec<InstallResult> 
                     })
                     .collect::<Vec<_>>(),
             ),
-            Ok(out) => {
+            Ok(out) if !out.results.is_empty() => {
+                // 整体 ok=false 但已有逐产品结果（部分成功）：保留结果而非全部报失败
                 *unsafe_flag = ps_reports_unsafe_path(&out);
+                Some(
+                    out.results
+                        .into_iter()
+                        .map(|r| InstallResult {
+                            product_id: r.product,
+                            success: r.ok,
+                            vmoptions_path: r.edited.first().cloned(),
+                            edited_paths: r.edited,
+                            jar_path: platform::normalize_path_for_output(jar),
+                            message: r.message.unwrap_or_default(),
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            }
+            Ok(out) => {
+                // 无逐产品结果的整体失败（agent 未找到 / unsafe-agent-path / 未知模式）
+                *unsafe_flag = ps_reports_unsafe_path(&out);
+                let detail = ps_failure_reason(&out);
+                logger::error(&format!("Windows 安装核心失败：{}", detail));
+                *reason = Some(detail);
                 None
             }
             Err(e) => {
-                logger::append(Level::Error, &format!("PowerShell 核心执行失败：{}", e));
+                logger::error(&format!("PowerShell 核心执行失败：{:#}", e));
+                *reason = Some(e.to_string());
                 None
             }
         }
     };
 
-    logger::append(
-        Level::Info,
-        &format!(
-            "javaagent 就地引用：{}",
-            platform::normalize_path_for_output(&jar)
-        ),
-    );
+    logger::info(&format!(
+        "开始安装 {} 个产品（Windows/PowerShell 核心）",
+        refs.len()
+    ));
+    logger::info(&format!(
+        "javaagent 就地引用：{}",
+        platform::normalize_path_for_output(&jar)
+    ));
 
     let mut unsafe_path_failure = false;
-    if let Some(results) = run(&jar, &mut unsafe_path_failure) {
+    let mut failure_reason: Option<String> = None;
+    if let Some(results) = run(&jar, &mut unsafe_path_failure, &mut failure_reason) {
+        log_install_summary(&results);
         return results;
     }
 
     // 兜底：仅在 PS 上报 unsafe-agent-path（就地路径无法变成无空格路径）时发生。
     if unsafe_path_failure && ps_failed_unsafe(&jar) {
-        logger::append(
-            Level::Warn,
+        logger::warn(
             "就地路径无法写入 vmoptions（8.3 短路径不可用），兜底复制 agent 到安全目录（唯一复制场景）",
         );
         match crate::agent_home::deploy_fallback(&state.bundle_root) {
             Ok((safe_root, clean)) => {
+                logger::info(&format!(
+                    "兜底部署完成：{}（clean={})",
+                    platform::normalize_path_for_output(&safe_root),
+                    clean
+                ));
                 let safe_jar = safe_root.join("lib.jar");
                 if clean {
                     let mut retry_unsafe = false;
-                    if let Some(results) = run(&safe_jar, &mut retry_unsafe) {
+                    let mut retry_reason = None;
+                    if let Some(results) = run(&safe_jar, &mut retry_unsafe, &mut retry_reason) {
+                        log_install_summary(&results);
                         return results;
                     }
                 }
-                logger::append(Level::Error, "兜底目录路径仍不安全，安装失败");
+                logger::error("兜底目录路径仍不安全，安装失败");
             }
-            Err(e) => logger::append(Level::Error, &format!("兜底部署失败：{}", e)),
+            Err(e) => logger::error(&format!("兜底部署失败：{:#}", e)),
         }
     }
 
+    let reason = failure_reason.unwrap_or_else(|| "PowerShell 执行失败".to_string());
     refs.iter()
-        .map(|id| InstallResult::skip(id, &jar, "PowerShell 执行失败".into()))
+        .map(|id| InstallResult::skip(id, &jar, reason.clone()))
         .collect()
+}
+
+/// 安装摘要（成功/跳过计数 + 产品明细）。
+fn log_install_summary(results: &[InstallResult]) {
+    let ok = results.iter().filter(|r| r.success).count();
+    logger::info(&format!(
+        "安装结束：{} 成功 / {} 未检测到或失败",
+        ok,
+        results.len() - ok
+    ));
+    for r in results.iter().filter(|r| !r.success) {
+        logger::warn(&format!(
+            "[{}] 未安装：{}",
+            r.product_id,
+            if r.message.is_empty() { "未检测到 IDE 的 vmoptions" } else { &r.message }
+        ));
+    }
 }
 
 /// 判定上一次 PS 运行是否因 unsafe-agent-path 失败（查看日志缓冲不可靠，

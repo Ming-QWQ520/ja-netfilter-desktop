@@ -135,16 +135,23 @@ fn generate_one(
     expiry: &str,
 ) -> LicenseResult {
     let _ = state;
-    let skip = |msg: String| LicenseResult {
-        product_id: product_id.to_string(),
-        ok: false,
-        key_path: None,
-        message: msg,
+    let skip = |msg: String| {
+        // 跳过/失败原因必须落到日志（否则前端 Snackbar 消失后就无法回查）
+        logger::warn(&msg);
+        LicenseResult {
+            product_id: product_id.to_string(),
+            ok: false,
+            key_path: None,
+            message: msg,
+        }
     };
 
     // 1. 产品码（ckey_script.ps1 的 $product.product_code）
     let Some(code) = product_code(product_id) else {
-        return skip(format!("{}：无已知产品码，跳过授权文件生成", product_id));
+        return skip(format!(
+            "[{}] 无已知产品码，跳过授权文件生成",
+            product_id
+        ));
     };
 
     // 2. 目标配置目录（ckey：Roaming\JetBrains\<dir>，即 roaming 侧）
@@ -156,8 +163,15 @@ fn generate_one(
     }
     if config_dirs.is_empty() {
         return skip(format!(
-            "{}：未检测到用户配置目录，无法写入授权文件（需先启动一次该 IDE）",
+            "[{}] 未检测到用户配置目录，无法写入授权文件（需先启动一次该 IDE）",
             product_id
+        ));
+    }
+    for dir in &config_dirs {
+        logger::debug(&format!(
+            "[{}] 授权文件目标目录：{}",
+            product_id,
+            dir.display()
         ));
     }
 
@@ -168,16 +182,62 @@ fn generate_one(
         "licenseName": license_name,
         "productCode": code,
     });
+    logger::debug(&format!(
+        "[{}] 请求授权服务：POST {}（productCode={}，name={}，expiry={}）",
+        product_id, LICENSE_URL, code, license_name, expiry
+    ));
     let resp = client.post(LICENSE_URL).json(&body).send();
     let bytes = match resp {
-        Ok(r) => match r.error_for_status() {
-            Ok(r) => match r.bytes() {
-                Ok(b) => b,
-                Err(e) => return skip(format!("{}：读取授权响应失败：{}", product_id, e)),
-            },
-            Err(e) => return skip(format!("{}：授权服务返回错误：{}", product_id, e)),
-        },
-        Err(e) => return skip(format!("{}：请求授权服务失败：{}", product_id, e)),
+        Ok(r) => {
+            let status = r.status();
+            logger::debug(&format!(
+                "[{}] 授权服务响应：HTTP {}",
+                product_id, status
+            ));
+            match r.error_for_status() {
+                Ok(r) => match r.bytes() {
+                    Ok(b) => {
+                        logger::debug(&format!(
+                            "[{}] 授权响应 {} 字节",
+                            product_id,
+                            b.len()
+                        ));
+                        if b.is_empty() {
+                            return skip(format!(
+                                "[{}] 授权服务返回空响应（服务端异常？请稍后重试）",
+                                product_id
+                            ));
+                        }
+                        b
+                    }
+                    Err(e) => {
+                        return skip(format!(
+                            "[{}] 读取授权响应失败：{}",
+                            product_id, e
+                        ))
+                    }
+                },
+                Err(e) => {
+                    return skip(format!(
+                        "[{}] 授权服务返回错误：{}（含状态码与 URL，请检查网络或稍后重试）",
+                        product_id, e
+                    ))
+                }
+            }
+        }
+        Err(e) => {
+            let kind = if e.is_timeout() {
+                "请求超时（30s）"
+            } else if e.is_connect() {
+                "无法连接（网络/代理/防火墙？）"
+            } else {
+                "请求异常"
+            };
+            return skip(format!(
+                "[{}] 请求授权服务失败——{}：{}",
+                product_id, kind, e
+            ));
+        }
     };
 
     // 4. 写入 <config_dir>/<prd>.key
@@ -185,11 +245,19 @@ fn generate_one(
     for dir in &config_dirs {
         let key_path = dir.join(format!("{}.key", product_id));
         match std::fs::write(&key_path, &bytes) {
-            Ok(()) => written.push(key_path),
+            Ok(()) => {
+                written.push(key_path.clone());
+                logger::debug(&format!(
+                    "[{}] 已写入 {}（{} 字节）",
+                    product_id,
+                    key_path.display(),
+                    bytes.len()
+                ));
+            }
             Err(e) => logger::append(
                 Level::Warn,
                 &format!(
-                    "{}：写入授权文件失败 {}: {}",
+                    "[{}] 写入授权文件失败 {}: {}",
                     product_id,
                     key_path.display(),
                     e
@@ -205,16 +273,13 @@ fn generate_one(
         .iter()
         .map(|p| crate::platform::normalize_path_for_output(p))
         .collect();
-    logger::append(
-        Level::Success,
-        &format!(
-            "[{}] 授权文件已生成：{}（{}，到期 {}）",
-            product_id,
-            display.join(", "),
-            license_name,
-            expiry
-        ),
-    );
+    logger::success(&format!(
+        "[{}] 授权文件已生成：{}（{}，到期 {}）",
+        product_id,
+        display.join(", "),
+        license_name,
+        expiry
+    ));
     LicenseResult {
         product_id: product_id.to_string(),
         ok: true,

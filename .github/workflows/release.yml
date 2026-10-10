@@ -4,7 +4,8 @@ name: Release
 #   1. 推送 tag：git tag v0.1.0 && git push origin v0.1.0
 #   2. 手动触发：Actions 页面 → Release → Run workflow（tag 留空则自动取
 #      tauri.conf.json 的版本号，如 v0.1.0）
-# 构建完成后自动把全平台安装包发布到 GitHub Releases（Latest）。
+# 构建完成后自动把 Windows 安装包发布到 GitHub Releases（Latest）。
+# 仅编译 Windows 平台（用户实际使用平台，缩短构建时间）。
 
 on:
   push:
@@ -25,18 +26,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: ubuntu-22.04
-            args: ""
-            target: x86_64-unknown-linux-gnu
           - platform: windows-latest
             args: ""
             target: x86_64-pc-windows-msvc
-          - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
-            target: aarch64-apple-darwin
-          - platform: macos-latest
-            args: "--target x86_64-apple-darwin"
-            target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -63,20 +55,6 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
-      - name: Install dependencies (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libglib2.0-dev \
-            libgtk-3-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev
-
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile=false
 
@@ -90,15 +68,15 @@ jobs:
           tagName: ${{ github.event_name == 'push' && github.ref_name || (github.event.inputs.tag || 'v__VERSION__') }}
           releaseName: "ja-netfilter Desktop ${{ github.event_name == 'push' && github.ref_name || (github.event.inputs.tag || 'v__VERSION__') }}"
           releaseBody: |
-            ## ja-netfilter Desktop（跨平台安装包）
+            ## ja-netfilter Desktop（Windows 安装包）
 
-            - Windows：`*.msi` / `*-setup.exe`（NSIS，默认按当前用户安装，无需管理员）
-            - macOS：`*.dmg`（Apple Silicon / Intel）
-            - Linux：`*.deb` / `*.AppImage`
+            - Windows x64：`*-setup.exe`（NSIS，默认按当前用户安装，无需管理员）/ `*.msi`
 
             内置 ja-netfilter agent（lib.jar / 插件 / 配置），安装后**就地引用、零复制**。
             安装时自动清理旧的 `-javaagent` 行与 `<PRODUCT>_VM_OPTIONS` 环境变量，
             并按自定义授权信息（名称默认 Ming，到期默认 2099-12-31）生成 `<prd>.key` 授权文件。
+
+            详细日志持久化在 `%APPDATA%\ja-netfilter-desktop\logs\`，反馈 issue 时请附上。
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

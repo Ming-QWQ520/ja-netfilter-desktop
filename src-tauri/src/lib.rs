@@ -43,11 +43,27 @@ pub fn run() {
             // 2. 工作区 + 应用自带资源目录
             let (workdir, bundle_root) = workspace::init_workspace(app.handle())?;
 
-            // 3. agent 就地引用（零复制）
+            // 3. 日志文件持久化：%APPDATA%\ja-netfilter-desktop\logs
+            let log_file = logger::set_log_dir(&workdir.join("logs"))
+                .map(|p| platform::normalize_path_for_output(&p))
+                .unwrap_or_default();
+            logger::info("==================================================");
+            logger::info(&format!(
+                "会话启动：v{} | {}",
+                app.package_info().version,
+                std::env::consts::OS
+            ));
+            logger::info(&format!("日志文件：{}（本页操作均实时写入，可随 issue 反馈）", log_file));
+
+            // 4. agent 就地引用（零复制）
             let agent_root = bundle_root.clone();
             let agent_jar = agent_root.join("lib.jar");
 
             log::info!("bundle 资源目录：{}", bundle_root.display());
+            logger::info(&format!(
+                "bundle 资源目录：{}",
+                platform::normalize_path_for_output(&bundle_root)
+            ));
             log::info!("agent lib.jar（就地引用）：{}", agent_jar.display());
             if !platform::is_clean_agent_path(&platform::normalize_path_for_output(&agent_jar)) {
                 // 含空格/非 ASCII：Windows 安装时由 PS 解析 8.3 短路径，
@@ -107,6 +123,7 @@ pub fn run() {
             reveal_in_finder,
             get_log_history,
             clear_log_history,
+            get_log_file_path,
             app_version,
         ])
         .run(tauri::generate_context!())

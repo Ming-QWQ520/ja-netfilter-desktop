@@ -59,6 +59,7 @@ export const api = {
   // Logs
   getLogHistory: () => invoke<LogEntry[]>("get_log_history"),
   clearLogHistory: () => invoke<void>("clear_log_history"),
+  getLogFilePath: () => invoke<string | null>("get_log_file_path"),
 
   // Misc
   appVersion: () => invoke<string>("app_version"),
