@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ja-netfilter-Desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.ming.ja-netfilter-desktop",
   "build": {
     "frontendDist": "../dist",
@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "ja-netfilter Desktop",
-        "width": 1280,
-        "height": 820,
-        "minWidth": 960,
-        "minHeight": 640,
+        "width": 1080,
+        "height": 700,
+        "minWidth": 920,
+        "minHeight": 580,
         "resizable": true,
         "fullscreen": false,
         "center": true,

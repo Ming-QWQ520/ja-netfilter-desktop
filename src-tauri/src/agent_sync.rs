@@ -1,26 +1,29 @@
 //! Agent 资源联网同步 —— 对齐 `ckey_script.ps1` 的 `File_Download` 语义。
 //!
-//! 排查结论（v0.1.0 现场缺陷）：应用自带的 agent 资源是历史快照
-//! （power.conf 标注 `Suit 230914`，2023-09 时代），且缺 `env.conf` /
-//! `native.conf` / `env.jar` / `native.jar` / `privacy.jar`；而
-//! ckey_script.ps1 **每次运行**都从 `https://ckey.run/ja-netfilter/` 下载
-//! 最新的 1 个 agent + 5 份配置 + 7 个插件。ckey.run 生成的 `<prd>.key`
-//! 必须与**当前版** power.conf 的 RSA 规则配对 —— 旧 power.conf 验不了
-//! 新 key，这正是「用 ps1 装好的激活，被本应用重装后失效」的根因。
+//! 背景（v0.1.0 现场缺陷）：应用自带的 agent 资源是历史快照（power.conf
+//! 标注 `Suit 230914`），而 ckey.run 生成的 `<prd>.key` 必须与**当前版**
+//! power.conf 的 RSA 规则配对 —— 旧 power.conf 验不了新 key，这正是
+//! 「用 ps1 装好的激活，被本应用重装后失效」的根因。
 //!
-//! 修复策略（与 ps1 保持同源同版本）：
-//!   1. 安装前自动把 `agent_root` 内的资源同步到 ckey.run 当前版本。
-//!      就地更新、**零复制语义不变**（-javaagent 行无需任何改动）；
-//!   2. 任一文件失败或 ckey.run 不可达时：保留自带资源（回退），
-//!      仅告警不中断安装 —— 与授权生成（license.rs）的 best-effort 一致；
-//!   3. 另暴露独立命令 `sync_agent_resources` 供设置页手动触发。
+//! 同步策略（v0.1.1 简化：「匹配一致则不下载」）：
+//!   1. 全量同步成功后，在 workdir 写入 `sync-manifest.json`（13 个文件的
+//!      SHA-256 + 时间戳）；
+//!   2. 后续同步先校验本地清单（文件齐全 + 哈希吻合 + 24h 内），
+//!      再用一个极小的 `power.conf` 探测请求确认激活关键文件未变 ——
+//!      一致则**零下载**直接返回（ckey.run 不支持 ETag/If-None-Match，
+//!      这是无校验头服务端下唯一可靠的「不下载」判定）；
+//!   3. 清单缺失/过期/哈希不符/探测到变化 → 走全量下载（内容一致仍跳过
+//!      写入，未变化文件不落盘）；网络层不可达时快速终止并沿用本地资源；
+//!   4. `force=true`（设置页手动按钮）跳过快速路径，强制核对全部文件。
 //!
-//! 同步采用「内容一致即跳过」策略：未变化的文件不重写，日志只报告
-//! 真正发生更新的文件，便于回查。
+//! 授权 key 与 power.conf 的配对不变量由此保持：只要 power.conf 变了，
+//! 下一次安装前的自动同步必然能感知（探测哈希不符）。
 
-use std::time::Duration;
+use std::collections::BTreeMap;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::logger::{self, Level};
 use crate::workspace::WorkspaceState;
@@ -45,6 +48,17 @@ const FILES: &[(&str, &str)] = &[
     ("plugins/hideme.jar", "plugins-jetbrains/hideme.jar"),
     ("plugins/privacy.jar", "plugins-jetbrains/privacy.jar"),
 ];
+
+/// 激活关键文件（授权 key 必须与其 RSA 规则配对）——探测用它代表
+/// 远端资源版本；它不变，key 配对就不会被破坏。
+const PROBE_REMOTE: &str = "config/power.conf";
+const PROBE_LOCAL: &str = "config-jetbrains/power.conf";
+
+/// 快速路径的清单保鲜期：超过则视为过期，走全量同步。
+const FRESH_SECS: u64 = 24 * 60 * 60;
+
+/// workdir 内的清单文件名。
+const MANIFEST_NAME: &str = "sync-manifest.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncSummary {
@@ -72,28 +86,203 @@ impl SyncSummary {
     }
 }
 
-/// 把 agent_root 内的 agent / 配置 / 插件同步到 ckey.run 当前版本。
-/// 网络异常与单文件失败均不致命；详细过程写入应用日志。
-pub fn sync_latest(state: &WorkspaceState) -> SyncSummary {
-    let client = match reqwest::blocking::Client::builder()
+/// 本地同步清单（全量成功后写入 workdir）。
+#[derive(Debug, Serialize, Deserialize)]
+struct SyncManifest {
+    /// 结构版本（将来字段变更时用于失效旧清单）。
+    version: u32,
+    /// 全量成功的 Unix 时间戳（秒）。
+    synced_at: u64,
+    /// 本地相对路径 -> SHA-256（hex）。
+    files: BTreeMap<String, String>,
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut h = Sha256::new();
+    h.update(bytes);
+    let out = h.finalize();
+    let mut s = String::with_capacity(out.len() * 2);
+    for b in out {
+        s.push_str(&format!("{b:02x}"));
+    }
+    s
+}
+
+fn manifest_path(state: &WorkspaceState) -> std::path::PathBuf {
+    state.workdir.join(MANIFEST_NAME)
+}
+
+fn load_manifest(state: &WorkspaceState) -> Option<SyncManifest> {
+    let bytes = std::fs::read(manifest_path(state)).ok()?;
+    match serde_json::from_slice::<SyncManifest>(&bytes) {
+        Ok(m) if m.version == 1 => Some(m),
+        _ => None,
+    }
+}
+
+fn save_manifest(state: &WorkspaceState, m: &SyncManifest) {
+    let path = manifest_path(state);
+    let tmp = path.with_extension("json.tmp");
+    match serde_json::to_vec_pretty(m)
+        .map_err(anyhow::Error::from)
+        .and_then(|b| {
+            std::fs::write(&tmp, b)?;
+            std::fs::rename(&tmp, &path)
+                .map_err(|e| {
+                    let _ = std::fs::remove_file(&tmp);
+                    e
+                })
+                .map_err(anyhow::Error::from)
+        }) {
+        Ok(()) => {}
+        Err(e) => logger::append(
+            Level::Warn,
+            &format!("[agent 同步] 同步清单写入失败（不影响资源）：{e}"),
+        ),
+    }
+}
+
+/// 校验本地文件与清单完全吻合（全部存在 + SHA-256 一致）。
+fn local_matches(state: &WorkspaceState, m: &SyncManifest) -> bool {
+    FILES.iter().all(|(_, rel)| {
+        let expected = match m.files.get(*rel) {
+            Some(h) => h,
+            None => return false,
+        };
+        match std::fs::read(state.agent_root.join(rel)) {
+            Ok(bytes) => sha256_hex(&bytes) == *expected,
+            Err(_) => false,
+        }
+    })
+}
+
+/// 把秒差转成「x 小时前 / x 分钟前」。
+fn age_text(secs: u64) -> String {
+    if secs < 3600 {
+        format!("{} 分钟前", (secs / 60).max(1))
+    } else if secs < 86400 {
+        format!("{} 小时前", secs / 3600)
+    } else {
+        format!("{} 天前", secs / 86400)
+    }
+}
+
+fn http_client() -> Option<reqwest::blocking::Client> {
+    reqwest::blocking::Client::builder()
         .user_agent(format!("ja-netfilter-desktop/{}", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(8))
         .timeout(Duration::from_secs(20))
         .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            let msg = format!("agent 同步跳过：HTTP 客户端创建失败（{e}），沿用自带资源");
+        .ok()
+}
+
+/// 探测远端 power.conf 是否与清单一致。
+/// 返回：Ok(Some(一致)) / Ok(Some(不一致)) / Ok(None)（远端异常，需全量核对）
+/// / Err(())（网络不可达）。
+fn probe_remote(
+    client: &reqwest::blocking::Client,
+    m: &SyncManifest,
+) -> Result<Option<bool>, ()> {
+    let url = format!("{SYNC_BASE}/{PROBE_REMOTE}");
+    let resp = client
+        .get(&url)
+        .send()
+        .map_err(|_| ())?;
+    if !resp.status().is_success() {
+        return Ok(None);
+    }
+    let bytes = resp.bytes().map_err(|_| ())?;
+    if bytes.is_empty() {
+        return Ok(None);
+    }
+    let expected = match m.files.get(PROBE_LOCAL) {
+        Some(h) => h,
+        None => return Ok(None),
+    };
+    Ok(Some(sha256_hex(bytes.as_ref()) == *expected))
+}
+
+/// 把 agent_root 内的 agent / 配置 / 插件同步到 ckey.run 当前版本。
+/// 网络异常与单文件失败均不致命；详细过程写入应用日志。
+///
+/// `force=false`（安装前自动同步）：本地清单新鲜且完整时仅做一次
+/// power.conf 探测，一致则零下载返回；`force=true`（手动）：全量核对。
+pub fn sync_latest(state: &WorkspaceState, force: bool) -> SyncSummary {
+    // ---- 快速路径：清单新鲜 + 本地完整 + 探测一致 => 零下载 ----
+    if !force {
+        if let Some(m) = load_manifest(state) {
+            let age = now_secs().saturating_sub(m.synced_at);
+            if age < FRESH_SECS && local_matches(state, &m) {
+                match http_client() {
+                    None => {}
+                    Some(client) => match probe_remote(&client, &m) {
+                        Ok(Some(true)) => {
+                            let msg = format!(
+                                "agent 资源已是最新（{}同步，power.conf 校验一致），跳过下载",
+                                age_text(age)
+                            );
+                            logger::info(&format!("[agent 同步] {msg}"));
+                            return SyncSummary {
+                                ok: true,
+                                updated: Vec::new(),
+                                unchanged: FILES.len(),
+                                failed: Vec::new(),
+                                message: msg,
+                            };
+                        }
+                        Ok(Some(false)) => {
+                            logger::info(
+                                "[agent 同步] 探测到远端 power.conf 已更新，开始全量同步……",
+                            );
+                        }
+                        Ok(None) => {
+                            logger::warn(
+                                "[agent 同步] 远端探测异常，回退全量核对……",
+                            );
+                        }
+                        Err(()) => {
+                            let msg = "ckey.run 不可达（离线/代理？），本地资源校验完整，沿用上次同步结果";
+                            logger::warn(&format!("[agent 同步] {msg}"));
+                            return SyncSummary {
+                                ok: true,
+                                updated: Vec::new(),
+                                unchanged: FILES.len(),
+                                failed: Vec::new(),
+                                message: msg.to_string(),
+                            };
+                        }
+                    },
+                }
+            }
+        }
+    }
+
+    let client = match http_client() {
+        Some(c) => c,
+        None => {
+            let msg = "agent 同步跳过：HTTP 客户端创建失败，沿用自带资源";
             logger::warn(&msg);
             return SyncSummary::skipped(&msg);
         }
     };
 
-    logger::info("开始同步最新 agent 资源（对齐 ckey.run 当前版本，与 ckey_script.ps1 同源）……");
+    if force {
+        logger::info("开始核对 agent 资源（手动强制，逐文件比对 ckey.run 当前版本）……");
+    } else {
+        logger::info("开始同步 agent 资源（对齐 ckey.run 当前版本）……");
+    }
 
     let mut updated = Vec::new();
     let mut unchanged = 0usize;
     let mut failed = Vec::new();
+    let mut hashes: BTreeMap<String, String> = BTreeMap::new();
     let mut net_down = false;
 
     for (remote, local_rel) in FILES {
@@ -160,10 +349,13 @@ pub fn sync_latest(state: &WorkspaceState) -> SyncSummary {
             continue;
         }
 
+        let digest = sha256_hex(bytes.as_ref());
+
         // 内容一致 -> 跳过写入
         if let Ok(existing) = std::fs::read(&dest) {
             if existing.as_slice() == bytes.as_ref() {
                 unchanged += 1;
+                hashes.insert(local_rel.to_string(), digest);
                 continue;
             }
         }
@@ -189,6 +381,7 @@ pub fn sync_latest(state: &WorkspaceState) -> SyncSummary {
                     ),
                 );
                 updated.push(local_rel.to_string());
+                hashes.insert(local_rel.to_string(), digest);
             }
             Err(e) => {
                 let _ = std::fs::remove_file(&tmp);
@@ -201,12 +394,27 @@ pub fn sync_latest(state: &WorkspaceState) -> SyncSummary {
         }
     }
 
-    let summary = if failed.is_empty() {
-        let msg = format!(
-            "agent 资源同步完成：更新 {} 个 / 一致 {} 个 / 失败 0 个",
-            updated.len(),
-            unchanged
+    // 全部成功才刷新清单（部分失败时保留旧清单，下次继续核对）
+    if failed.is_empty() && !net_down {
+        save_manifest(
+            state,
+            &SyncManifest {
+                version: 1,
+                synced_at: now_secs(),
+                files: hashes,
+            },
         );
+    }
+
+    let summary = if failed.is_empty() {
+        let msg = if updated.is_empty() {
+            format!("agent 资源核对完成：{unchanged} 个文件与 ckey.run 最新版一致，无需更新")
+        } else {
+            format!(
+                "agent 资源同步完成：更新 {} 个 / 一致 {unchanged} 个 / 失败 0 个",
+                updated.len()
+            )
+        };
         logger::success(&msg);
         SyncSummary {
             ok: true,
@@ -217,9 +425,8 @@ pub fn sync_latest(state: &WorkspaceState) -> SyncSummary {
         }
     } else {
         let msg = format!(
-            "agent 资源部分同步：更新 {} 个 / 一致 {} 个 / 失败 {} 个（失败项沿用自带资源，不影响安装继续）",
+            "agent 资源部分同步：更新 {} 个 / 一致 {unchanged} 个 / 失败 {} 个（失败项沿用自带资源，不影响安装继续）",
             updated.len(),
-            unchanged,
             failed.len()
         );
         logger::append(Level::Warn, &msg);

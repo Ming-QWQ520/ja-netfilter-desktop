@@ -2,7 +2,6 @@
 import { computed, onMounted, ref } from "vue";
 
 import { useT } from "@/i18n";
-import { ui, type ThemeMode } from "@/stores/ui";
 import { useSettingsStore } from "@/stores/settings";
 import {
   useLicenseStore,
@@ -14,7 +13,6 @@ import { api } from "@/api";
 import type { SyncSummary } from "@/types";
 
 const t = useT();
-const uiStore = ui();
 const settings = useSettingsStore();
 const license = useLicenseStore();
 const toast = useToast();
@@ -25,12 +23,6 @@ const syncing = ref(false);
 const syncResult = ref<SyncSummary | null>(null);
 
 const info = computed(() => settings.info);
-
-const themes: { id: ThemeMode; labelKey: string }[] = [
-  { id: "system", labelKey: "theme_system" },
-  { id: "light", labelKey: "theme_light" },
-  { id: "dark", labelKey: "theme_dark" },
-];
 
 const osLabel = computed(() => {
   switch (info.value?.os) {
@@ -61,7 +53,7 @@ async function syncAgent() {
     const s = await api.syncAgentResources();
     syncResult.value = s;
     if (s.failed.length === 0) {
-      toast.success(s.message || t("agent_sync_done").replace("{msg}", ""));
+      toast.success(s.message);
     } else {
       toast.warn(s.message);
     }
@@ -85,187 +77,81 @@ onMounted(() => settings.refresh());
 
 <template>
   <section class="tab-panel">
-    <div class="settings-grid">
-      <!-- 外观 -->
-      <div class="md-card md-card--elevated">
-        <h3>{{ t("appearance") }}</h3>
-        <div class="row">
-          <div class="row-label">
-            <span class="row-title">{{ t("theme_label") }}</span>
-          </div>
-          <div class="row-value theme-options">
-            <label v-for="th in themes" :key="th.id" class="md-radio">
-              <input
-                type="radio"
-                name="theme"
-                :value="th.id"
-                :checked="uiStore.theme === th.id"
-                @change="uiStore.setTheme(th.id)"
-              />
-              <span>{{ t(th.labelKey) }}</span>
-            </label>
-          </div>
+    <div class="settings-col">
+      <!-- 授权 -->
+      <div class="md-card">
+        <h3>{{ t("license_title") }}</h3>
+        <div class="license-row">
+          <input
+            v-model="licenseInput"
+            type="text"
+            class="md-input"
+            :placeholder="DEFAULT_LICENSE_NAME"
+            spellcheck="false"
+            @keyup.enter="saveLicense"
+          />
+          <input
+            v-model="expiryInput"
+            type="text"
+            class="md-input expiry-input"
+            :placeholder="DEFAULT_EXPIRY_DATE"
+            spellcheck="false"
+            @keyup.enter="saveLicense"
+          />
+          <button class="md-btn md-btn--tonal md-btn--sm" @click="saveLicense">
+            {{ t("save") }}
+          </button>
         </div>
-        <div class="row">
-          <div class="row-label">
-            <span class="row-title">{{ t("language_label") }}</span>
-          </div>
-          <div class="row-value">
-            <div class="md-segmented">
-              <button
-                :class="{ 'is-active': uiStore.locale === 'zh' }"
-                @click="uiStore.setLocale('zh')"
-              >
-                中文
-              </button>
-              <button
-                :class="{ 'is-active': uiStore.locale === 'en' }"
-                @click="uiStore.setLocale('en')"
-              >
-                English
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 行为 -->
-      <div class="md-card md-card--elevated">
-        <h3>{{ t("behavior") }}</h3>
-        <div class="row">
-          <div class="row-label">
-            <span class="row-title">{{ t("license_name_label") }}</span>
-            <p class="row-hint">{{ t("license_hint") }}</p>
-          </div>
-          <div class="row-value license-editor">
-            <div class="md-field md-field--mono">
-              <input
-                v-model="licenseInput"
-                type="text"
-                :placeholder="DEFAULT_LICENSE_NAME"
-                spellcheck="false"
-                @keyup.enter="saveLicense"
-              />
-            </div>
-            <div class="md-field md-field--mono">
-              <input
-                v-model="expiryInput"
-                type="text"
-                class="expiry-input"
-                :placeholder="DEFAULT_EXPIRY_DATE"
-                spellcheck="false"
-                @keyup.enter="saveLicense"
-              />
-            </div>
-            <button class="md-btn md-btn--tonal md-btn--sm" @click="saveLicense">
-              {{ t("save") }}
-            </button>
-          </div>
-        </div>
+        <p class="hint">{{ t("license_hint") }}</p>
       </div>
 
       <!-- Agent 资源同步 -->
-      <div class="md-card md-card--elevated">
+      <div class="md-card">
         <h3>{{ t("agent_sync_title") }}</h3>
-        <div class="row">
-          <div class="row-label">
-            <span class="row-title">ckey.run</span>
-            <p class="row-hint">{{ t("agent_sync_desc") }}</p>
-          </div>
-          <div class="row-value">
-            <button
-              class="md-btn md-btn--tonal md-btn--sm"
-              :disabled="syncing"
-              @click="syncAgent"
-            >
-              {{ syncing ? t("agent_sync_running") : t("agent_sync_btn") }}
-            </button>
-            <p v-if="syncResult" class="row-hint sync-result">{{ syncResult.message }}</p>
-          </div>
+        <div class="license-row">
+          <button
+            class="md-btn md-btn--tonal md-btn--sm"
+            :disabled="syncing"
+            @click="syncAgent"
+          >
+            {{ syncing ? t("agent_sync_running") : t("agent_sync_btn") }}
+          </button>
+          <span v-if="syncResult" class="hint sync-result">{{ syncResult.message }}</span>
         </div>
+        <p class="hint">{{ t("agent_sync_desc") }}</p>
       </div>
 
       <!-- 路径 -->
-      <div v-if="info" class="md-card md-card--elevated">
+      <div v-if="info" class="md-card">
         <h3>{{ t("paths") }}</h3>
-
         <div class="path-row">
-          <div class="row-label">
-            <span class="row-title">{{ t("path_agent_root") }}</span>
-            <p class="row-hint">{{ t("path_agent_root_desc") }}</p>
-          </div>
-          <div class="row-value">
-            <code class="path mono selectable">{{ info.agent_root }}</code>
-            <div class="row-actions">
-              <span class="md-chip" :class="info.agent_clean ? 'md-chip--success' : 'md-chip--warning'">
-                {{ info.agent_clean ? "space-free ✓" : "contains spaces ⚠" }}
-              </span>
-              <button class="md-btn md-btn--text md-btn--sm" @click="reveal(info.agent_root)">
-                {{ t("reveal") }}
-              </button>
-            </div>
-          </div>
+          <span class="path-label">{{ t("path_agent_root") }}</span>
+          <code class="path mono selectable" :title="info.agent_root">{{ info.agent_root }}</code>
+          <span class="md-chip md-chip--xs" :class="info.agent_clean ? 'md-chip--success' : 'md-chip--warning'">
+            {{ info.agent_clean ? "✓" : "⚠" }}
+          </span>
+          <button class="md-btn md-btn--text md-btn--sm" @click="reveal(info.agent_root)">
+            {{ t("reveal") }}
+          </button>
         </div>
-
-        <hr class="md-divider" />
-
         <div class="path-row">
-          <div class="row-label">
-            <span class="row-title">lib.jar</span>
-            <p class="row-hint">-javaagent:{{ info.jar_path }}=jetbrains</p>
-          </div>
-          <div class="row-value">
-            <code class="path mono selectable">{{ info.jar_path }}</code>
-            <div class="row-actions">
-              <span class="md-chip" :class="info.jar_exists ? 'md-chip--success' : 'md-chip--error'">
-                {{ info.jar_exists ? "✓" : "✕" }}
-              </span>
-              <button class="md-btn md-btn--text md-btn--sm" @click="reveal(info.jar_path)">
-                {{ t("reveal") }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <hr class="md-divider" />
-
-        <div class="path-row">
-          <div class="row-label">
-            <span class="row-title">{{ t("path_config") }}</span>
-          </div>
-          <div class="row-value">
-            <code class="path mono selectable">{{ info.config_dir }}</code>
-            <div class="row-actions">
-              <button class="md-btn md-btn--text md-btn--sm" @click="reveal(info.config_dir)">
-                {{ t("reveal") }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <hr class="md-divider" />
-
-        <div class="path-row">
-          <div class="row-label">
-            <span class="row-title">{{ t("path_workdir") }}</span>
-          </div>
-          <div class="row-value">
-            <code class="path mono selectable">{{ info.workdir }}</code>
-            <div class="row-actions">
-              <button class="md-btn md-btn--text md-btn--sm" @click="reveal(info.workdir)">
-                {{ t("reveal") }}
-              </button>
-            </div>
-          </div>
+          <span class="path-label">{{ t("agent_line_label") }}</span>
+          <code class="path mono selectable" :title="info.jar_path">-javaagent:{{ info.jar_path }}=jetbrains</code>
+          <span class="md-chip md-chip--xs" :class="info.jar_exists ? 'md-chip--success' : 'md-chip--error'">
+            {{ info.jar_exists ? "✓" : "✕" }}
+          </span>
+          <button class="md-btn md-btn--text md-btn--sm" @click="reveal(info.jar_path)">
+            {{ t("reveal") }}
+          </button>
         </div>
       </div>
 
       <!-- 关于 -->
-      <div class="md-card md-card--elevated">
-        <h3>{{ t("about") }}</h3>
+      <div class="md-card">
         <div class="about-row">
-          <span class="md-chip md-chip--outlined">{{ t("version") }}: {{ info?.app_version ?? "…" }}</span>
-          <span class="md-chip md-chip--outlined">{{ t("platform") }}: {{ osLabel }}</span>
+          <h3>{{ t("about") }}</h3>
+          <span class="md-chip md-chip--outlined">v{{ info?.app_version ?? "…" }}</span>
+          <span class="md-chip md-chip--outlined">{{ osLabel }}</span>
         </div>
         <p class="disclaimer">{{ t("disclaimer") }}</p>
       </div>
@@ -277,110 +163,122 @@ onMounted(() => settings.refresh());
 .tab-panel {
   height: 100%;
   overflow: auto;
-  padding: 20px 24px 32px;
+  padding: 14px 16px 24px;
 }
 
-.settings-grid {
-  max-width: 860px;
+.settings-col {
+  max-width: 680px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
-.settings-grid h3 {
-  margin: 0 0 14px;
-  font-size: 16px;
+.settings-col h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
   font-weight: 600;
 }
 
-.row {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 16px;
-  align-items: start;
-  padding: 10px 0;
-}
-.row-label {
-  min-width: 0;
-}
-.row-title {
-  font-weight: 500;
-  font-size: 14px;
-}
-.row-hint {
-  margin: 4px 0 0;
-  font-size: 11.5px;
-  color: var(--md-on-surface-variant);
-  word-break: break-all;
-  line-height: 1.5;
-}
-.row-value {
+.license-row {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
-}
-.theme-options {
-  flex-direction: row;
-  gap: 18px;
-  flex-wrap: wrap;
-}
-.license-editor {
-  flex-direction: row;
   align-items: center;
   gap: 8px;
+}
+.license-row .md-input {
+  flex: 1;
+  min-width: 0;
+}
+.license-row .expiry-input {
+  flex: 0 0 120px;
+}
+
+.md-input {
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--md-corner-xs);
+  background: var(--md-surface-container-highest);
+  color: var(--md-on-surface);
+  font: 400 12.5px/1.4 var(--md-mono);
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+  transition: box-shadow var(--md-dur-short);
   width: 100%;
 }
-.license-editor .md-field {
-  flex: 1;
+.md-input:focus {
+  box-shadow: inset 0 0 0 2px var(--md-primary);
+}
+
+.hint {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--md-on-surface-variant);
+  line-height: 1.55;
+  word-break: break-all;
 }
 .sync-result {
-  color: var(--md-on-surface-variant);
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .path-row {
   display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: 16px;
-  padding: 12px 0;
-  align-items: start;
+  grid-template-columns: 96px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 0;
+  min-width: 0;
+}
+.path-label {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
 }
 .path {
-  display: block;
-  font-size: 12px;
+  min-width: 0;
+  font-size: 11.5px;
   background: var(--md-surface-container);
-  border-radius: var(--md-corner-s);
-  padding: 8px 10px;
-  word-break: break-all;
-  line-height: 1.5;
+  border-radius: var(--md-corner-xs);
+  padding: 5px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.row-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.md-chip--xs {
+  height: 20px;
+  padding: 0 7px;
+  font-size: 11px;
+  flex-shrink: 0;
 }
 
 .about-row {
   display: flex;
+  align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+}
+.about-row h3 {
+  margin: 0;
+  flex: 1;
 }
 .disclaimer {
   margin: 0;
-  font-size: 12.5px;
-  color: var(--md-on-surface-variant);
-  line-height: 1.65;
-  padding: 12px 14px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  padding: 10px 12px;
   border-radius: var(--md-corner-m);
   background: var(--md-warning-container);
   color: var(--md-on-warning-container);
 }
 
-@media (max-width: 760px) {
-  .row,
+@media (max-width: 720px) {
   .path-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr auto;
+  }
+  .path-label {
+    grid-column: 1 / -1;
   }
 }
 </style>

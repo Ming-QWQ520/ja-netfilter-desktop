@@ -193,19 +193,13 @@ onMounted(async () => {
 <template>
   <section class="tab-panel">
     <div class="config-toolbar">
-      <div>
-        <h2>{{ mode === "configs" ? t("config_files") : t("vmoptions_editor") }}</h2>
-        <p class="desc">{{ mode === "configs" ? t("config_files_desc") : t("vmoptions_desc") }}</p>
-      </div>
-      <div class="toolbar-right">
-        <div class="md-segmented">
-          <button :class="{ 'is-active': mode === 'configs' }" @click="switchMode('configs')">
-            {{ t("config_files") }}
-          </button>
-          <button :class="{ 'is-active': mode === 'vmoptions' }" @click="switchMode('vmoptions')">
-            {{ t("vmoptions_editor") }}
-          </button>
-        </div>
+      <div class="md-segmented">
+        <button :class="{ 'is-active': mode === 'configs' }" @click="switchMode('configs')">
+          {{ t("config_files") }}
+        </button>
+        <button :class="{ 'is-active': mode === 'vmoptions' }" @click="switchMode('vmoptions')">
+          {{ t("vmoptions_editor") }}
+        </button>
       </div>
     </div>
 
@@ -279,36 +273,26 @@ onMounted(async () => {
 .tab-panel {
   height: 100%;
   overflow: hidden;
-  padding: 20px 24px 24px;
+  padding: 14px 16px 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 .config-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   flex-wrap: wrap;
-}
-.config-toolbar h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-.desc {
-  margin: 2px 0 0;
-  font-size: 12.5px;
-  color: var(--md-on-surface-variant);
 }
 
 .config-layout {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 16px;
+  grid-template-columns: 230px 1fr;
+  gap: 10px;
 }
 
 .side-list {

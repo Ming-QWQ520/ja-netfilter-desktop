@@ -98,43 +98,43 @@ const moonIcon = `<path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/>`
 .top-bar {
   display: flex;
   align-items: center;
-  gap: 24px;
-  height: 72px;
-  padding: 0 20px;
+  gap: 18px;
+  height: 48px;
+  padding: 0 14px;
   background: var(--md-surface-container);
   flex-shrink: 0;
+  border-bottom: 1px solid var(--md-outline-variant);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 .brand-mark {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--md-corner-m);
+  width: 26px;
+  height: 26px;
+  border-radius: var(--md-corner-s);
   background: var(--md-primary);
   color: var(--md-on-primary);
   font-weight: 700;
-  font-size: 15px;
+  font-size: 11px;
   display: grid;
   place-content: center;
-  box-shadow: var(--md-shadow-1);
   flex-shrink: 0;
 }
 .brand-text {
-  line-height: 1.2;
+  line-height: 1.15;
   min-width: 0;
 }
 .brand-name {
   font-weight: 600;
-  font-size: 15px;
+  font-size: 13px;
   white-space: nowrap;
 }
 .brand-sub {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--md-on-surface-variant);
 }
 
@@ -146,7 +146,7 @@ const moonIcon = `<path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/>`
 .bar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .content {

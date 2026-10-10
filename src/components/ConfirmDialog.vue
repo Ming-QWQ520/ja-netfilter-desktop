@@ -10,7 +10,7 @@ const state = useConfirmState();
   <Teleport to="body">
     <div v-if="state.open" class="md-dialog-scrim" @click.self="resolveConfirm(false)">
       <div class="md-dialog" role="alertdialog">
-        <h3>{{ state.danger ? "⚠" : "" }} {{ t("action_continue") }}</h3>
+        <h3>{{ state.danger ? "⚠" : "" }} {{ t("confirm_title") }}</h3>
         <p>{{ state.message }}</p>
         <div class="md-dialog__actions">
           <button class="md-btn md-btn--text" @click="resolveConfirm(false)">

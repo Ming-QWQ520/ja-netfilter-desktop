@@ -95,39 +95,32 @@ watch(
 <template>
   <section class="tab-panel">
     <div class="logs-toolbar">
-      <div>
-        <h2>{{ t("tab_logs") }}</h2>
-        <p class="desc">{{ t("logs_desc") }}</p>
+      <div class="filter-chips">
+        <button
+          v-for="f in filters"
+          :key="f.id"
+          class="md-chip md-chip--filter"
+          :class="{ 'is-selected': store.filter === f.id }"
+          @click="store.setFilter(f.id)"
+        >
+          {{ t(f.labelKey) }}
+        </button>
       </div>
-      <div class="toolbar-right">
-        <div class="filter-chips">
-          <button
-            v-for="f in filters"
-            :key="f.id"
-            class="md-chip md-chip--filter"
-            :class="{ 'is-selected': store.filter === f.id }"
-            @click="store.setFilter(f.id)"
-          >
-            {{ t(f.labelKey) }}
+      <div class="logs-meta">
+        <label class="switch-row">
+          <span>{{ t("autoscroll") }}</span>
+          <span class="md-switch">
+            <input type="checkbox" v-model="autoscroll" />
+            <span class="md-switch__track" />
+            <span class="md-switch__thumb" />
+          </span>
+        </label>
+        <div class="meta-actions">
+          <button class="md-btn md-btn--text md-btn--sm" @click="copyAll">{{ t("copy") }}</button>
+          <button class="md-btn md-btn--danger-outlined md-btn--sm" @click="clearAll">
+            {{ t("clear") }}
           </button>
         </div>
-      </div>
-    </div>
-
-    <div class="logs-meta">
-      <label class="switch-row">
-        <span>{{ t("autoscroll") }}</span>
-        <span class="md-switch">
-          <input type="checkbox" v-model="autoscroll" />
-          <span class="md-switch__track" />
-          <span class="md-switch__thumb" />
-        </span>
-      </label>
-      <div class="meta-actions">
-        <button class="md-btn md-btn--text md-btn--sm" @click="copyAll">{{ t("copy") }}</button>
-        <button class="md-btn md-btn--danger-outlined md-btn--sm" @click="clearAll">
-          {{ t("clear") }}
-        </button>
       </div>
     </div>
 
@@ -162,28 +155,18 @@ watch(
 .tab-panel {
   height: 100%;
   overflow: hidden;
-  padding: 20px 24px 24px;
+  padding: 14px 16px 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .logs-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
-}
-.logs-toolbar h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-.desc {
-  margin: 2px 0 0;
-  font-size: 12.5px;
-  color: var(--md-on-surface-variant);
 }
 .filter-chips {
   display: flex;
@@ -194,14 +177,13 @@ watch(
 .logs-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
 }
 .switch-row {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
+  gap: 8px;
+  font-size: 12.5px;
   color: var(--md-on-surface-variant);
   cursor: pointer;
 }
@@ -243,13 +225,13 @@ watch(
   background: var(--md-surface-container-lowest);
   box-shadow: inset 0 0 0 1px var(--md-outline-variant);
   border-radius: var(--md-corner-m);
-  padding: 12px;
+  padding: 10px;
   font-size: 12px;
-  line-height: 1.7;
+  line-height: 1.65;
 }
 .log-line {
   display: grid;
-  grid-template-columns: 150px 70px 1fr;
+  grid-template-columns: 140px 62px 1fr;
   gap: 10px;
   padding: 1px 6px;
   border-radius: var(--md-corner-xs);
