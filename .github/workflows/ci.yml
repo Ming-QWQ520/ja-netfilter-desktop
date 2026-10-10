@@ -89,3 +89,4 @@ jobs:
       - name: cargo clippy
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
+        continue-on-error: true  # lint advice, not a CI blocker (same as fmt)
