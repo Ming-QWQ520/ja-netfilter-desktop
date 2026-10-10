@@ -1,0 +1,55 @@
+2026-10-10 20:53:16.245 [INFO] ==================================================
+2026-10-10 20:53:16.247 [INFO] 会话启动：v0.1.0 | windows
+2026-10-10 20:53:16.249 [INFO] 日志文件：C:/Users/Administrator/AppData/Roaming/ja-netfilter-desktop/logs/ja-netfilter-20261010.log（本页操作均实时写入，可随 issue 反馈）
+2026-10-10 20:53:16.249 [INFO] bundle 资源目录：E:/ja-netfilter-Desktop/resources
+2026-10-10 20:53:16.250 [SUCCESS] agent 就地引用就绪（零复制）：E:/ja-netfilter-Desktop/resources/lib.jar
+2026-10-10 20:53:21.473 [INFO] 开始安装 1 个产品（Windows/PowerShell 核心）
+2026-10-10 20:53:21.479 [INFO] javaagent 就地引用：E:/ja-netfilter-Desktop/resources/lib.jar
+2026-10-10 20:53:21.487 [DEBUG] PowerShell 启动：mode=install，products=[pycharm]，agent=E:/ja-netfilter-Desktop/resources/lib.jar，script=C:/Users/Administrator/AppData/Local/Temp/ja-netfilter-desktop/win_core.ps1
+2026-10-10 20:54:03.452 [DEBUG] PowerShell 退出：code=0，stdout 1537 字节
+2026-10-10 20:54:03.453 [DEBUG] agent jar (resolved): \\?\E:\ja-netfilter-Desktop\resources\lib.jar
+2026-10-10 20:54:03.454 [INFO] agent line: -javaagent://?/E:/ja-netfilter-Desktop/resources/lib.jar=jetbrains
+2026-10-10 20:54:03.455 [DEBUG] processing product: pycharm
+2026-10-10 20:54:03.457 [DEBUG] scan root: C:\Users\Administrator\AppData\Local\JetBrains
+2026-10-10 20:54:03.459 [DEBUG] product config dir: C:\Users\Administrator\AppData\Local\JetBrains\PyCharm2025.1
+2026-10-10 20:54:03.459 [DEBUG] install dir via .home: D:\PyCharm 2025.1.5
+2026-10-10 20:54:03.460 [DEBUG] bin vmoptions found: 2 file(s)
+2026-10-10 20:54:03.461 [DEBUG] roaming vmoptions found: 0 file(s) under C:\Users\Administrator\AppData\Roaming\JetBrains\PyCharm2025.1
+2026-10-10 20:54:03.462 [INFO] cleaned 1 stale agent line(s) from D:\PyCharm 2025.1.5\bin\jetbrains_client64.exe.vmoptions
+2026-10-10 20:54:03.462 [INFO] cleaned 1 stale agent line(s) from D:\PyCharm 2025.1.5\bin\pycharm64.exe.vmoptions
+2026-10-10 20:54:03.463 [SUCCESS] installed for pycharm -> D:\PyCharm 2025.1.5\bin\jetbrains_client64.exe.vmoptions, D:\PyCharm 2025.1.5\bin\pycharm64.exe.vmoptions
+2026-10-10 20:54:03.464 [INFO] WM_SETTINGCHANGE broadcast sent
+2026-10-10 20:54:03.465 [INFO] 安装结束：1 成功 / 0 未检测到或失败
+2026-10-10 20:54:03.467 [INFO] 开始生成授权文件：名称「Ming」，到期「2099-12-31」
+2026-10-10 20:54:03.495 [DEBUG] [pycharm] 授权文件目标目录：C:\Users\Administrator\AppData\Roaming\JetBrains\PyCharm2025.1
+2026-10-10 20:54:03.499 [DEBUG] [pycharm] 请求授权服务：POST https://ckey.run/generateLicense/file（productCode=PC,PSI,PCWMP，name=Ming，expiry=2099-12-31）
+2026-10-10 20:54:04.786 [DEBUG] [pycharm] 授权服务响应：HTTP 200 OK
+2026-10-10 20:54:04.788 [DEBUG] [pycharm] 授权响应 5488 字节
+2026-10-10 20:54:04.792 [DEBUG] [pycharm] 已写入 C:\Users\Administrator\AppData\Roaming\JetBrains\PyCharm2025.1\pycharm.key（5488 字节）
+2026-10-10 20:54:04.798 [SUCCESS] [pycharm] 授权文件已生成：C:/Users/Administrator/AppData/Roaming/JetBrains/PyCharm2025.1/pycharm.key（Ming，到期 2099-12-31）
+2026-10-10 20:54:04.800 [SUCCESS] 授权文件生成完成：1 个成功，0 个跳过/失败
+2026-10-10 20:54:13.367 [INFO] 开始安装 1 个产品（Windows/PowerShell 核心）
+2026-10-10 20:54:13.369 [INFO] javaagent 就地引用：E:/ja-netfilter-Desktop/resources/lib.jar
+2026-10-10 20:54:13.372 [DEBUG] PowerShell 启动：mode=install，products=[pycharm]，agent=E:/ja-netfilter-Desktop/resources/lib.jar，script=C:/Users/Administrator/AppData/Local/Temp/ja-netfilter-desktop/win_core.ps1
+2026-10-10 20:54:31.365 [DEBUG] PowerShell 退出：code=0，stdout 1537 字节
+2026-10-10 20:54:31.366 [DEBUG] agent jar (resolved): \\?\E:\ja-netfilter-Desktop\resources\lib.jar
+2026-10-10 20:54:31.369 [INFO] agent line: -javaagent://?/E:/ja-netfilter-Desktop/resources/lib.jar=jetbrains
+2026-10-10 20:54:31.379 [DEBUG] processing product: pycharm
+2026-10-10 20:54:31.382 [DEBUG] scan root: C:\Users\Administrator\AppData\Local\JetBrains
+2026-10-10 20:54:31.384 [DEBUG] product config dir: C:\Users\Administrator\AppData\Local\JetBrains\PyCharm2025.1
+2026-10-10 20:54:31.385 [DEBUG] install dir via .home: D:\PyCharm 2025.1.5
+2026-10-10 20:54:31.389 [DEBUG] bin vmoptions found: 2 file(s)
+2026-10-10 20:54:31.390 [DEBUG] roaming vmoptions found: 0 file(s) under C:\Users\Administrator\AppData\Roaming\JetBrains\PyCharm2025.1
+2026-10-10 20:54:31.391 [INFO] cleaned 1 stale agent line(s) from D:\PyCharm 2025.1.5\bin\jetbrains_client64.exe.vmoptions
+2026-10-10 20:54:31.393 [INFO] cleaned 1 stale agent line(s) from D:\PyCharm 2025.1.5\bin\pycharm64.exe.vmoptions
+2026-10-10 20:54:31.397 [SUCCESS] installed for pycharm -> D:\PyCharm 2025.1.5\bin\jetbrains_client64.exe.vmoptions, D:\PyCharm 2025.1.5\bin\pycharm64.exe.vmoptions
+2026-10-10 20:54:31.398 [INFO] WM_SETTINGCHANGE broadcast sent
+2026-10-10 20:54:31.399 [INFO] 安装结束：1 成功 / 0 未检测到或失败
+2026-10-10 20:54:31.400 [INFO] 开始生成授权文件：名称「Ming」，到期「2099-12-31」
+2026-10-10 20:54:31.477 [DEBUG] [pycharm] 授权文件目标目录：C:\Users\Administrator\AppData\Roaming\JetBrains\PyCharm2025.1
+2026-10-10 20:54:31.479 [DEBUG] [pycharm] 请求授权服务：POST https://ckey.run/generateLicense/file（productCode=PC,PSI,PCWMP，name=Ming，expiry=2099-12-31）
+2026-10-10 20:54:33.186 [DEBUG] [pycharm] 授权服务响应：HTTP 200 OK
+2026-10-10 20:54:33.188 [DEBUG] [pycharm] 授权响应 5488 字节
+2026-10-10 20:54:33.190 [DEBUG] [pycharm] 已写入 C:\Users\Administrator\AppData\Roaming\JetBrains\PyCharm2025.1\pycharm.key（5488 字节）
+2026-10-10 20:54:33.192 [SUCCESS] [pycharm] 授权文件已生成：C:/Users/Administrator/AppData/Roaming/JetBrains/PyCharm2025.1/pycharm.key（Ming，到期 2099-12-31）
+2026-10-10 20:54:33.196 [SUCCESS] 授权文件生成完成：1 个成功，0 个跳过/失败
