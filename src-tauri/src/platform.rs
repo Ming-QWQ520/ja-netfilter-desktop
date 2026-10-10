@@ -74,6 +74,28 @@ pub fn is_clean_agent_path(s: &str) -> bool {
             .all(|c| c.is_ascii_graphic() && c != '"' && c != '\\' && c != '\'')
 }
 
+/// 剥离 Windows verbatim 前缀，返回可直接参与路径拼接/展示/传参的 PathBuf。
+///
+/// 背景（v0.1.0 现场缺陷）：Tauri 的 `path().resolve(Resource)` 在部分
+/// Windows 环境返回 `\\?\E:\...` verbatim 路径。该前缀仅在**纯反斜杠**形式下
+/// 对 Win32 API 有效；一旦把反斜杠替换成正斜杠（JVM vmoptions 的惯例写法），
+/// 就变成 `//?/E:/...`，JVM 打不开该 jar，IDE 报
+/// "FATAL ERROR in native method: processing of -javaagent failed" 且拒绝启动。
+/// 因此必须在路径进入 WorkspaceState **之前**剥离前缀，让 `-javaagent`
+/// 拿到的是普通 drive 路径（JVM 对 `E:/foo/bar.jar` 完全兼容）。
+pub fn simplify_path(path: PathBuf) -> PathBuf {
+    let s = path.to_string_lossy().to_string();
+    // 顺序无关紧要：两个前缀互不为前缀，但先剥 UNC 更易读
+    let stripped = if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        return path; // 普通路径，原样返回
+    };
+    PathBuf::from(stripped)
+}
+
 /// 规范化路径，用于写入 vmoptions 的 `-javaagent:` 行和日志展示。
 ///
 /// 修复点（相对 v0.1.6）：

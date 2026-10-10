@@ -14,6 +14,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use tauri::{AppHandle, Manager};
 
+use crate::platform;
+
 /// 用户数据目录名（与 tauri.conf.json 的 identifier 对应）。
 pub const WORKDIR_NAME: &str = "ja-netfilter-desktop";
 
@@ -100,10 +102,15 @@ pub fn init_workspace(app: &AppHandle) -> Result<(PathBuf, PathBuf)> {
     fs::create_dir_all(&workdir)
         .with_context(|| format!("创建工作区失败：{}", workdir.display()))?;
 
-    let bundle_root = app
+    let resolved = app
         .path()
         .resolve("resources", tauri::path::BaseDirectory::Resource)
         .context("无法解析项目自带的 resources 目录")?;
+    // 关键：剥离 Tauri 在 Windows 上可能返回的 verbatim 前缀（\\?\E:\...）。
+    // 否则该前缀会跟随 agent_jar 一路传进 win_core.ps1，转成正斜杠后变成
+    // `//?/E:/...` 写入 vmoptions，JVM 打不开 agent，IDE 启动即崩
+    // （"processing of -javaagent failed"）。
+    let bundle_root = platform::simplify_path(resolved);
     if !bundle_root.exists() {
         anyhow::bail!(
             "项目自带的 resources 目录不存在：{}",

@@ -27,6 +27,17 @@ param(
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
+# ---------------------------------------------------------------------------
+# Normalize the incoming agent path.
+# Rust normally passes a plain drive path, but if a Win32 verbatim prefix
+# (\\?\E:\... or \\?\UNC\server\share) ever leaks through, it MUST be
+# stripped here: after the backslash->slash conversion below a verbatim path
+# would become '//?/E:/...' which the JVM cannot open - the IDE then dies at
+# startup with "FATAL ERROR in native method: processing of -javaagent failed".
+# ---------------------------------------------------------------------------
+$AgentJar = $AgentJar -replace '^\\\\\?\\UNC\\', '\\'
+$AgentJar = $AgentJar -replace '^\\\\\?\\', ''
+
 $script:Logs = New-Object System.Collections.ArrayList
 function Add-Log([string]$level, [string]$message) {
     $null = $script:Logs.Add(@{ level = $level; message = $message })
@@ -298,6 +309,14 @@ switch ($Mode) {
         }
         $agentSafe = Get-ShortPath $AgentJar
         Add-Log "debug" "agent jar (resolved): $agentSafe"
+        # Hard guard: a surviving verbatim prefix (either separator style) would
+        # produce a -javaagent line the JVM cannot open. Refuse and let the
+        # Rust side fall back to a safe directory instead of breaking the IDE.
+        if (($agentSafe -match '\\\\?\\') -or ($agentSafe -match '//\?/')) {
+            $result.ok = $false
+            Add-Log "error" "unsafe-agent-path: $agentSafe (verbatim prefix not stripped)"
+            break
+        }
         if ($script:UnsafePathRegex.IsMatch($agentSafe)) {
             # 8.3 short path unavailable (disabled volume?) -> let Rust fall back
             # to copying the agent into a space-free directory and retry.
