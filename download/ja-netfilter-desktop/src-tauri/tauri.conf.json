@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ja-netfilter-Desktop",
-  "version": "0.1.6",
-  "identifier": "io.github.ja-netfilter.desktop",
+  "version": "0.1.0",
+  "identifier": "com.ming.ja-netfilter-desktop",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "ja-netfilter 桌面版",
+        "title": "ja-netfilter Desktop",
         "width": 1280,
         "height": 820,
         "minWidth": 960,
@@ -22,8 +22,7 @@
         "fullscreen": false,
         "center": true,
         "decorations": true,
-        "transparent": false,
-        "theme": "Dark"
+        "transparent": false
       }
     ],
     "security": {
@@ -44,13 +43,16 @@
       "resources/lib.jar",
       "resources/config-jetbrains/*",
       "resources/plugins-jetbrains/*",
-      "resources/vmoptions/*",
-      "resources/scripts/*"
+      "resources/vmoptions/*"
     ],
     "copyright": "© 2026 Ming-QWQ520",
     "category": "DeveloperTool",
     "shortDescription": "Desktop GUI for ja-netfilter",
-    "longDescription": "Cross-platform desktop application to manage the ja-netfilter Java agent, plugins, configuration files and per-product vmoptions for JetBrains IDEs."
+    "longDescription": "Cross-platform desktop application to manage the ja-netfilter Java agent, plugins, configuration files and per-product vmoptions for JetBrains IDEs.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   }
 }
-

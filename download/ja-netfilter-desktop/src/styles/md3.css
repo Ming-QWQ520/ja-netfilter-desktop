@@ -1,0 +1,916 @@
+/**
+ * Material Design 3 设计系统 —— ja-netfilter-desktop
+ *
+ * 以品牌橙 #FE5A3D 为种子的 tonal 色板（明暗双主题）。
+ * 令牌命名遵循 MD3 官方规范：
+ *   color:  primary/on-primary/primary-container/...、surface 系列、outline 系列
+ *   shape:  corner xs(4) s(8) m(12) l(16) xl(28) full
+ *   state:  hover 8% / focus 12% / pressed 12% state layers
+ *   motion: emphasized cubic-bezier(0.2, 0, 0, 1)
+ */
+
+/* ------------------------------------------------------------------ */
+/* Light scheme                                                        */
+/* ------------------------------------------------------------------ */
+:root,
+.md-light {
+  --md-primary: #9c4226;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #ffdbd0;
+  --md-on-primary-container: #3b0900;
+
+  --md-secondary: #77574e;
+  --md-on-secondary: #ffffff;
+  --md-secondary-container: #ffdad2;
+  --md-on-secondary-container: #2c150f;
+
+  --md-tertiary: #6c5a2e;
+  --md-on-tertiary: #ffffff;
+  --md-tertiary-container: #f5e1a7;
+  --md-on-tertiary-container: #231b00;
+
+  --md-error: #ba1a1a;
+  --md-on-error: #ffffff;
+  --md-error-container: #ffdad6;
+  --md-on-error-container: #410002;
+
+  --md-success: #3f6e33;
+  --md-on-success: #ffffff;
+  --md-success-container: #bcf0aa;
+  --md-on-success-container: #002204;
+
+  --md-warning: #7a5900;
+  --md-on-warning: #ffffff;
+  --md-warning-container: #ffdf9b;
+  --md-on-warning-container: #251a00;
+
+  --md-surface: #fff8f6;
+  --md-surface-dim: #dbbfb6;
+  --md-surface-bright: #fff8f6;
+  --md-surface-container-lowest: #ffffff;
+  --md-surface-container-low: #fdf1ec;
+  --md-surface-container: #f8eae5;
+  --md-surface-container-high: #f2e5e0;
+  --md-surface-container-highest: #ecdfda;
+
+  --md-on-surface: #231917;
+  --md-on-surface-variant: #534341;
+  --md-outline: #85736f;
+  --md-outline-variant: #d8c2bb;
+
+  --md-inverse-surface: #392e2b;
+  --md-inverse-on-surface: #ffe1d9;
+  --md-inverse-primary: #ffb59c;
+
+  --md-scrim: rgba(0, 0, 0, 0.4);
+
+  --md-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --md-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --md-shadow-3: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
+}
+
+/* ------------------------------------------------------------------ */
+/* Dark scheme                                                         */
+/* ------------------------------------------------------------------ */
+.md-dark {
+  --md-primary: #ffb59c;
+  --md-on-primary: #5c1a06;
+  --md-primary-container: #7c2f18;
+  --md-on-primary-container: #ffdbd0;
+
+  --md-secondary: #e7bdb2;
+  --md-on-secondary: #442a22;
+  --md-secondary-container: #5d4038;
+  --md-on-secondary-container: #ffdad2;
+
+  --md-tertiary: #d9c68c;
+  --md-on-tertiary: #3a2f00;
+  --md-tertiary-container: #524600;
+  --md-on-tertiary-container: #f5e1a7;
+
+  --md-error: #ffb4ab;
+  --md-on-error: #690005;
+  --md-error-container: #93000a;
+  --md-on-error-container: #ffdad6;
+
+  --md-success: #a6d592;
+  --md-on-success: #102f06;
+  --md-success-container: #264e1c;
+  --md-on-success-container: #bcf0aa;
+
+  --md-warning: #f5b942;
+  --md-on-warning: #3f2d00;
+  --md-warning-container: #5c4200;
+  --md-on-warning-container: #ffdf9b;
+
+  --md-surface: #1a110e;
+  --md-surface-dim: #1a110e;
+  --md-surface-bright: #423734;
+  --md-surface-container-lowest: #140b09;
+  --md-surface-container-low: #231917;
+  --md-surface-container: #271d1b;
+  --md-surface-container-high: #322825;
+  --md-surface-container-highest: #3d322f;
+
+  --md-on-surface: #f1dfda;
+  --md-on-surface-variant: #d8c2bb;
+  --md-outline: #a08d88;
+  --md-outline-variant: #534341;
+
+  --md-inverse-surface: #f1dfda;
+  --md-inverse-on-surface: #392e2b;
+  --md-inverse-primary: #9c4226;
+
+  --md-scrim: rgba(0, 0, 0, 0.5);
+
+  --md-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.6), 0 1px 3px 1px rgba(0, 0, 0, 0.3);
+  --md-shadow-2: 0 1px 2px rgba(0, 0, 0, 0.6), 0 2px 6px 2px rgba(0, 0, 0, 0.3);
+  --md-shadow-3: 0 1px 3px rgba(0, 0, 0, 0.6), 0 4px 8px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ------------------------------------------------------------------ */
+/* Shape / motion / type                                               */
+/* ------------------------------------------------------------------ */
+:root {
+  --md-corner-xs: 4px;
+  --md-corner-s: 8px;
+  --md-corner-m: 12px;
+  --md-corner-l: 16px;
+  --md-corner-xl: 28px;
+  --md-corner-full: 999px;
+
+  --md-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --md-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-dur-short: 150ms;
+  --md-dur-med: 250ms;
+
+  --md-font: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system,
+    "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --md-mono: "Cascadia Code", "JetBrains Mono", Consolas, "SFMono-Regular",
+    "Menlo", monospace;
+
+  /* state layer opacities */
+  --md-hover: 0.08;
+  --md-focus: 0.12;
+  --md-press: 0.12;
+}
+
+/* ------------------------------------------------------------------ */
+/* Base                                                                */
+/* ------------------------------------------------------------------ */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font-family: var(--md-font);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+}
+
+#app {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mono {
+  font-family: var(--md-mono);
+}
+
+/* 文本可选中（编辑器/日志/路径） */
+.selectable,
+textarea,
+input,
+pre,
+code {
+  user-select: text;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--md-outline-variant);
+  border-radius: var(--md-corner-full);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--md-outline);
+  background-clip: content-box;
+  border: 2px solid transparent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons                                                             */
+/* ------------------------------------------------------------------ */
+.md-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 24px;
+  border: none;
+  border-radius: var(--md-corner-full);
+  font: 500 14px/1 var(--md-font);
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  overflow: hidden;
+  transition: box-shadow var(--md-dur-short) var(--md-ease-standard),
+    background-color var(--md-dur-short) var(--md-ease-standard),
+    color var(--md-dur-short) var(--md-ease-standard),
+    opacity var(--md-dur-short) var(--md-ease-standard);
+  white-space: nowrap;
+}
+.md-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--md-dur-short) var(--md-ease-standard);
+  pointer-events: none;
+}
+.md-btn:hover::before {
+  opacity: var(--md-hover);
+}
+.md-btn:active::before {
+  opacity: var(--md-press);
+}
+.md-btn:focus-visible {
+  outline: 3px solid var(--md-primary);
+  outline-offset: 2px;
+}
+.md-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.md-btn .md-btn__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.md-btn--filled {
+  background: var(--md-primary);
+  color: var(--md-on-primary);
+}
+.md-btn--filled:hover {
+  box-shadow: var(--md-shadow-1);
+}
+
+.md-btn--tonal {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+}
+.md-btn--tonal:hover {
+  box-shadow: var(--md-shadow-1);
+}
+
+.md-btn--outlined {
+  background: transparent;
+  color: var(--md-primary);
+  box-shadow: inset 0 0 0 1px var(--md-outline);
+}
+
+.md-btn--text {
+  background: transparent;
+  color: var(--md-primary);
+  padding: 0 12px;
+}
+
+.md-btn--danger-filled {
+  background: var(--md-error);
+  color: var(--md-on-error);
+}
+.md-btn--danger-outlined {
+  background: transparent;
+  color: var(--md-error);
+  box-shadow: inset 0 0 0 1px var(--md-error);
+}
+
+.md-btn--sm {
+  height: 32px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+
+/* 图标按钮 */
+.md-icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--md-corner-full);
+  background: transparent;
+  color: var(--md-on-surface-variant);
+  cursor: pointer;
+  overflow: hidden;
+  transition: color var(--md-dur-short), background-color var(--md-dur-short);
+}
+.md-icon-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--md-dur-short);
+}
+.md-icon-btn:hover::before {
+  opacity: var(--md-hover);
+}
+.md-icon-btn:active::before {
+  opacity: var(--md-press);
+}
+.md-icon-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Cards                                                               */
+/* ------------------------------------------------------------------ */
+.md-card {
+  border-radius: var(--md-corner-m);
+  background: var(--md-surface-container-low);
+  padding: 16px;
+  transition: box-shadow var(--md-dur-med) var(--md-ease-emphasized),
+    background-color var(--md-dur-med);
+}
+.md-card--elevated {
+  background: var(--md-surface-container-low);
+  box-shadow: var(--md-shadow-1);
+}
+.md-card--elevated:hover {
+  box-shadow: var(--md-shadow-2);
+}
+.md-card--filled {
+  background: var(--md-surface-container-highest);
+}
+.md-card--outlined {
+  background: var(--md-surface);
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+}
+
+/* ------------------------------------------------------------------ */
+/* Tabs                                                                */
+/* ------------------------------------------------------------------ */
+.md-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.md-tab {
+  position: relative;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 20px;
+  border: none;
+  background: transparent;
+  color: var(--md-on-surface-variant);
+  font: 500 14px/1 var(--md-font);
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  border-radius: var(--md-corner-s) var(--md-corner-s) 0 0;
+  overflow: hidden;
+  transition: color var(--md-dur-short), background-color var(--md-dur-short);
+}
+.md-tab::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--md-dur-short);
+}
+.md-tab:hover::before {
+  opacity: var(--md-hover);
+}
+.md-tab:active::before {
+  opacity: var(--md-press);
+}
+.md-tab.is-active {
+  color: var(--md-primary);
+}
+.md-tab::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--md-primary);
+  transform: translateX(-50%);
+  transition: width var(--md-dur-med) var(--md-ease-emphasized);
+}
+.md-tab.is-active::after {
+  width: calc(100% - 32px);
+}
+.md-tab svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Switch                                                              */
+/* ------------------------------------------------------------------ */
+.md-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 52px;
+  height: 32px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.md-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.md-switch__track {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--md-corner-full);
+  background: var(--md-surface-container-highest);
+  box-shadow: inset 0 0 0 2px var(--md-outline);
+  transition: background-color var(--md-dur-med) var(--md-ease-emphasized),
+    box-shadow var(--md-dur-med);
+}
+.md-switch__thumb {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--md-corner-full);
+  background: var(--md-outline);
+  transform: translateY(-50%);
+  transition: all var(--md-dur-med) var(--md-ease-emphasized);
+}
+.md-switch input:checked ~ .md-switch__track {
+  background: var(--md-primary);
+  box-shadow: none;
+}
+.md-switch input:checked ~ .md-switch__thumb {
+  left: 26px;
+  width: 24px;
+  height: 24px;
+  background: var(--md-on-primary);
+}
+.md-switch.is-disabled {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Chips                                                               */
+/* ------------------------------------------------------------------ */
+.md-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--md-corner-s);
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  font: 500 12px/1 var(--md-font);
+  border: none;
+  white-space: nowrap;
+}
+.md-chip--outlined {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+  color: var(--md-on-surface-variant);
+}
+.md-chip--primary {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+.md-chip--error {
+  background: var(--md-error-container);
+  color: var(--md-on-error-container);
+}
+.md-chip--success {
+  background: var(--md-success-container);
+  color: var(--md-on-success-container);
+}
+.md-chip--warning {
+  background: var(--md-warning-container);
+  color: var(--md-on-warning-container);
+}
+.md-chip--filter {
+  cursor: pointer;
+  transition: box-shadow var(--md-dur-short), background-color var(--md-dur-short),
+    color var(--md-dur-short);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+  color: var(--md-on-surface-variant);
+}
+.md-chip--filter.is-selected {
+  background: var(--md-secondary-container);
+  box-shadow: none;
+  color: var(--md-on-secondary-container);
+}
+
+/* ------------------------------------------------------------------ */
+/* Segmented buttons                                                   */
+/* ------------------------------------------------------------------ */
+.md-segmented {
+  display: inline-flex;
+  border-radius: var(--md-corner-full);
+  box-shadow: inset 0 0 0 1px var(--md-outline);
+  overflow: hidden;
+  height: 36px;
+}
+.md-segmented button {
+  position: relative;
+  border: none;
+  background: transparent;
+  color: var(--md-on-surface);
+  font: 500 13px/1 var(--md-font);
+  padding: 0 16px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background-color var(--md-dur-short), color var(--md-dur-short);
+}
+.md-segmented button + button {
+  box-shadow: inset 1px 0 0 var(--md-outline);
+}
+.md-segmented button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--md-dur-short);
+}
+.md-segmented button:hover::before {
+  opacity: var(--md-hover);
+}
+.md-segmented button.is-active {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+}
+
+/* ------------------------------------------------------------------ */
+/* Text fields (outlined)                                              */
+/* ------------------------------------------------------------------ */
+.md-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.md-field__label {
+  font: 500 12px/1.4 var(--md-font);
+  color: var(--md-on-surface-variant);
+  padding-left: 4px;
+}
+.md-field input[type="text"],
+.md-field input[type="search"] {
+  height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: var(--md-corner-xs);
+  background: var(--md-surface-container-highest);
+  color: var(--md-on-surface);
+  font: 400 14px/1.4 var(--md-font);
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+  transition: box-shadow var(--md-dur-short);
+  width: 100%;
+}
+.md-field input:focus {
+  box-shadow: inset 0 0 0 2px var(--md-primary);
+}
+.md-field--mono input {
+  font-family: var(--md-mono);
+  font-size: 13px;
+}
+
+/* 编辑器 textarea */
+.md-editor {
+  width: 100%;
+  height: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-radius: var(--md-corner-m);
+  background: var(--md-surface-container-lowest);
+  color: var(--md-on-surface);
+  font: 400 13px/1.65 var(--md-mono);
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+  transition: box-shadow var(--md-dur-short);
+  resize: none;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+}
+.md-editor:focus {
+  box-shadow: inset 0 0 0 2px var(--md-primary);
+}
+
+/* ------------------------------------------------------------------ */
+/* List items（可点击行）                                               */
+/* ------------------------------------------------------------------ */
+.md-list-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: var(--md-corner-m);
+  background: transparent;
+  color: var(--md-on-surface);
+  font: 400 14px/1.45 var(--md-font);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background-color var(--md-dur-short);
+}
+.md-list-item::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--md-dur-short);
+}
+.md-list-item:hover::before {
+  opacity: var(--md-hover);
+}
+.md-list-item.is-active {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+}
+.md-list-item.is-active::before {
+  opacity: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Snackbar                                                            */
+/* ------------------------------------------------------------------ */
+.md-snackbar-host {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 1000;
+  pointer-events: none;
+}
+.md-snackbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  max-width: 560px;
+  padding: 10px 16px;
+  border-radius: var(--md-corner-xs);
+  background: var(--md-inverse-surface);
+  color: var(--md-inverse-on-surface);
+  font: 400 14px/1.45 var(--md-font);
+  box-shadow: var(--md-shadow-3);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: snackbar-in var(--md-dur-med) var(--md-ease-emphasized);
+}
+.md-snackbar--success {
+  color: var(--md-success-container);
+}
+.md-snackbar--error {
+  color: var(--md-error-container);
+}
+.md-snackbar--warn {
+  color: var(--md-warning-container);
+}
+@keyframes snackbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Dialog                                                              */
+/* ------------------------------------------------------------------ */
+.md-dialog-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--md-scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  animation: fade-in var(--md-dur-short) ease-out;
+}
+.md-dialog {
+  width: min(420px, calc(100vw - 48px));
+  border-radius: var(--md-corner-xl);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface);
+  padding: 24px;
+  box-shadow: var(--md-shadow-3);
+  animation: dialog-in var(--md-dur-med) var(--md-ease-emphasized);
+}
+.md-dialog h3 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 500;
+}
+.md-dialog p {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: var(--md-on-surface-variant);
+}
+.md-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Linear progress（不确定态）                                          */
+/* ------------------------------------------------------------------ */
+.md-progress {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--md-surface-container-highest);
+  overflow: hidden;
+  width: 100%;
+}
+.md-progress__bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--md-primary);
+  animation: progress-slide 1.2s var(--md-ease-standard) infinite;
+}
+@keyframes progress-slide {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Radio                                                               */
+/* ------------------------------------------------------------------ */
+.md-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--md-on-surface);
+}
+.md-radio input {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--md-corner-full);
+  box-shadow: inset 0 0 0 2px var(--md-on-surface-variant);
+  margin: 0;
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+  transition: box-shadow var(--md-dur-short);
+}
+.md-radio input::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transform: scale(0);
+  transition: transform var(--md-dur-short) var(--md-ease-emphasized);
+  background: var(--md-primary);
+}
+.md-radio input:checked {
+  box-shadow: inset 0 0 0 2px var(--md-primary);
+}
+.md-radio input:checked::before {
+  transform: scale(1);
+}
+
+/* ------------------------------------------------------------------ */
+/* Misc                                                                */
+/* ------------------------------------------------------------------ */
+.md-divider {
+  height: 1px;
+  background: var(--md-outline-variant);
+  border: none;
+  margin: 0;
+}
+
+.md-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 16px;
+  color: var(--md-on-surface-variant);
+  font-size: 14px;
+}
+
+.md-skeleton {
+  border-radius: var(--md-corner-m);
+  background: linear-gradient(
+    90deg,
+    var(--md-surface-container) 25%,
+    var(--md-surface-container-high) 50%,
+    var(--md-surface-container) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+@keyframes skeleton {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* fade between tab panels */
+.md-panel-enter-active {
+  transition: opacity var(--md-dur-med) var(--md-ease-emphasized),
+    transform var(--md-dur-med) var(--md-ease-emphasized);
+}
+.md-panel-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}

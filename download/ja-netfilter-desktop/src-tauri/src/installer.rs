@@ -1,19 +1,35 @@
-//! 跨平台安装 / 卸载逻辑。
+//! 跨平台安装 / 卸载。
 //!
-//! 安装时直接查找并编辑 IDE 自带的 vmoptions 文件（追加 -javaagent 行），
-//! 不再依赖环境变量。若未找到 IDE 自带 vmoptions，回退到工作区模板。
-//! lib.jar 始终使用项目自带路径（不复制到工作区）。
-//! Windows 上 setx 后广播 WM_SETTINGCHANGE，确保 IDE 能立即读取新环境变量。
+//! v0.1.0 按 ckey_script.ps1 的语义实现，且 **零复制**：
+//!   1. agent 就地引用：`-javaagent` 指向应用自带资源目录内的 lib.jar
+//!      （项目自带的文件不复制到 C 盘或其它位置）。
+//!   2. 安装前剥离目标 vmoptions 中**全部**旧 `-javaagent:` 行
+//!      （ckey 的 Revert_Vm_Options，regex `^-javaagent:.*\.jar.*`），
+//!      再追加新行 —— 从根上治愈 "processing of -javaagent failed"。
+//!      同时剥离历史版本遗留的 `-Dja.netfilter.name=` 行（不再写入）。
+//!   3. **删除**（而非设置）`<PRODUCT>_VM_OPTIONS` 环境变量（User + Machine
+//!      两个作用域），并在 Windows 上广播 WM_SETTINGCHANGE。
+//!   4. 目标文件 = IDE 真实读取的位置：Roaming 配置目录 vmoptions +
+//!      `.home` 指向的安装目录 `bin/*.vmoptions`（递归）。
+//!   5. 路径含空格时：Windows 由 win_core.ps1 解析 8.3 短路径；若仍不安全
+//!      （卷禁用 8.3），PS 上报 `unsafe-agent-path`，本模块才把 agent 兜底
+//!      复制到无空格安全目录并重试一次 —— 这是唯一会发生复制的情况。
+//!   6. 卸载时一并移除自定义授权生成的 `<prd>.key` 文件。
+//!
+//! Windows 上核心逻辑由内嵌的 `win_core.ps1` 完成（以 JSON 契约通信）；
+//! macOS / Linux 由本模块以相同语义用 Rust 原生实现。
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::logger;
+use crate::license;
+use crate::locate;
+use crate::logger::{self, Level};
 use crate::platform::{self, Os};
-use crate::products::bundled_jar_path;
 use crate::vmoptions;
 use crate::workspace::WorkspaceState;
 
@@ -21,445 +37,444 @@ use crate::workspace::WorkspaceState;
 pub struct InstallResult {
     pub product_id: String,
     pub success: bool,
+    /// 第一个编辑过的 vmoptions 文件（兼容旧字段）。
     pub vmoptions_path: Option<String>,
+    /// 全部编辑/清理过的文件。
+    pub edited_paths: Vec<String>,
     pub jar_path: String,
     pub message: String,
 }
 
-/// 为单个产品安装 javaagent。`license_name` 为可选的自定义授权名称。
-pub fn install(
-    state: &WorkspaceState,
-    product_id: &str,
-    license_name: Option<&str>,
-) -> Result<InstallResult> {
-    let resource_root = state.resource_root();
-    let workdir = state.workdir();
-    let jar = bundled_jar_path(&resource_root);
-
-    if !jar.exists() {
-        return Ok(InstallResult {
+impl InstallResult {
+    fn skip(product_id: &str, jar: &Path, message: String) -> Self {
+        Self {
             product_id: product_id.to_string(),
             success: false,
             vmoptions_path: None,
-            jar_path: platform::normalize_path_for_output(&jar),
-            message: format!("未找到项目自带的 lib.jar：{}", jar.display()),
-        });
-    }
-
-    // 优先查找 IDE 自带的 vmoptions 文件（最可靠的方式）
-    let ide_vmoptions = find_ide_vmoptions(product_id);
-
-    let (vm_path_to_edit, used_ide_file) = if let Some(ref ide_path) = ide_vmoptions {
-        // 找到了 IDE 自带的 vmoptions 文件，直接编辑它
-        (ide_path.clone(), true)
-    } else {
-        // 未找到 IDE 自带 vmoptions，回退到工作区模板
-        let template = resource_root
-            .join("vmoptions")
-            .join(format!("{}.vmoptions", product_id));
-        if !template.exists() {
-            return Ok(InstallResult {
-                product_id: product_id.to_string(),
-                success: false,
-                vmoptions_path: None,
-                jar_path: platform::normalize_path_for_output(&jar),
-                message: format!(
-                    "未找到 {} 的 vmoptions 文件，请先安装对应 IDE。",
-                    product_id
-                ),
-            });
-        }
-        match copy_on_write(&template, &workdir, product_id) {
-            Ok(p) => (p, false),
-            Err(e) => {
-                return Ok(InstallResult {
-                    product_id: product_id.to_string(),
-                    success: false,
-                    vmoptions_path: None,
-                    jar_path: platform::normalize_path_for_output(&jar),
-                    message: format!("复制 vmoptions 到工作区失败：{}", e),
-                })
-            }
-        }
-    };
-
-    // 编辑 vmoptions：先剥离旧的 javaagent 行，再追加新的
-    vmoptions::ensure_javaagent(&vm_path_to_edit, &jar, license_name)?;
-
-    // 同时设置环境变量（双保险）
-    let env_var = platform::env_var_name(product_id);
-    let vm_path_native = vm_path_to_edit.to_string_lossy().to_string();
-    match Os::current() {
-        Os::Macos => {
-            std::process::Command::new("launchctl")
-                .args(["setenv", &env_var, &vm_path_native])
-                .status()
-                .ok();
-            write_shell_rc(&env_var, &vm_path_native)?;
-        }
-        Os::Linux => {
-            write_shell_rc(&env_var, &vm_path_native)?;
-        }
-        Os::Windows => {
-            // setx 持久化环境变量到注册表
-            std::process::Command::new("setx")
-                .args([&env_var, &vm_path_native])
-                .status()
-                .ok();
-            // 广播 WM_SETTINGCHANGE，让 Windows Explorer 和其他进程立即感知
-            // 环境变量变更。否则用户需要注销/重启才能生效。
-            broadcast_env_change();
+            edited_paths: Vec::new(),
+            jar_path: platform::normalize_path_for_output(jar),
+            message,
         }
     }
-
-    let vm_path_display = platform::normalize_path_for_output(&vm_path_to_edit);
-    let method = if used_ide_file { "IDE 自带 vmoptions" } else { "工作区模板" };
-
-    logger::append(
-        logger::Level::Info,
-        &format!(
-            "[{}] 已安装 javaagent -> {}（{}）{}",
-            product_id,
-            vm_path_display,
-            method,
-            if let Some(n) = license_name {
-                format!("（自定义授权名称：{}）", n)
-            } else {
-                String::new()
-            }
-        ),
-    );
-
-    Ok(InstallResult {
-        product_id: product_id.to_string(),
-        success: true,
-        vmoptions_path: Some(vm_path_display.clone()),
-        jar_path: platform::normalize_path_for_output(&jar),
-        message: format!("javaagent 已写入{}（{}）", method, vm_path_display),
-    })
 }
 
-/// 为单个产品卸载 javaagent。
-pub fn uninstall(state: &WorkspaceState, product_id: &str) -> Result<InstallResult> {
-    let resource_root = state.resource_root();
-    let jar = bundled_jar_path(&resource_root);
-
-    // 查找所有可能的 vmoptions 文件并清理
-    let mut cleaned_paths: Vec<PathBuf> = Vec::new();
-
-    // 1. IDE 自带的 vmoptions
-    if let Some(ide_path) = find_ide_vmoptions(product_id) {
-        if ide_path.exists() {
-            vmoptions::strip_javaagent(&ide_path)?;
-            cleaned_paths.push(ide_path);
-        }
-    }
-
-    // 2. 工作区副本
-    let workdir = state.workdir();
-    let workspace_copy = workdir
-        .join("vmoptions")
-        .join(format!("{}.vmoptions", product_id));
-    if workspace_copy.exists() {
-        vmoptions::strip_javaagent(&workspace_copy)?;
-        cleaned_paths.push(workspace_copy);
-    }
-
-    // 清理环境变量
-    let env_var = platform::env_var_name(product_id);
-    if Os::current() == Os::Macos {
-        std::process::Command::new("launchctl")
-            .args(["unsetenv", &env_var])
-            .status()
-            .ok();
-    }
-    remove_shell_rc(&env_var)?;
-
-    // Windows 上删除环境变量并广播
-    if Os::current() == Os::Windows {
-        std::process::Command::new("reg")
-            .args(["delete", "HKCU\\Environment", "/v", &env_var, "/f"])
-            .status()
-            .ok();
-        broadcast_env_change();
-    }
-
-    let paths_display: Vec<String> = cleaned_paths
+fn result_from(product_id: &str, ok: bool, edited: Vec<PathBuf>, jar: &Path, message: &str) -> InstallResult {
+    let disp: Vec<String> = edited
         .iter()
         .map(|p| platform::normalize_path_for_output(p))
         .collect();
+    InstallResult {
+        product_id: product_id.to_string(),
+        success: ok,
+        vmoptions_path: disp.first().cloned(),
+        edited_paths: disp,
+        jar_path: platform::normalize_path_for_output(jar),
+        message: message.to_string(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PowerShell 核心（Windows）
+// ---------------------------------------------------------------------------
+
+const WIN_CORE_PS1: &str = include_str!("scripts/win_core.ps1");
+
+#[derive(Debug, Deserialize)]
+struct PsLogEntry {
+    level: String,
+    message: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PsProductResult {
+    product: String,
+    ok: bool,
+    #[serde(default)]
+    edited: Vec<String>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PsCoreOutput {
+    ok: bool,
+    #[serde(default)]
+    results: Vec<PsProductResult>,
+    #[serde(default)]
+    logs: Vec<PsLogEntry>,
+}
+
+/// 把内嵌脚本写到临时文件（UTF-8 BOM 前缀，PS 5.1 才能正确解析 Unicode）。
+fn materialize_ps_script() -> Result<PathBuf> {
+    let dir = std::env::temp_dir().join("ja-netfilter-desktop");
+    fs::create_dir_all(&dir)?;
+    let path = dir.join("win_core.ps1");
+    fs::write(&path, format!("\u{feff}{}", WIN_CORE_PS1))?;
+    Ok(path)
+}
+
+/// 运行 PowerShell 核心，解析 JSON 输出，并把日志灌入应用日志。
+fn run_ps_core(mode: &str, products: &[&str], agent_jar: &Path) -> Result<PsCoreOutput> {
+    let script = materialize_ps_script()?;
+    let output = Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ])
+        .arg(&script)
+        .arg("-Mode")
+        .arg(mode)
+        .arg("-Products")
+        .arg(products.join(","))
+        .arg("-AgentJar")
+        .arg(agent_jar)
+        .output()
+        .context("无法启动 powershell.exe")?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    // stdout 必须是纯 JSON；PS 把诊断信息写到 stderr
+    let parsed: PsCoreOutput = serde_json::from_str(stdout.trim()).map_err(|e| {
+        anyhow::anyhow!(
+            "PowerShell 输出解析失败：{}；stderr: {}",
+            e,
+            stderr.trim()
+        )
+    })?;
+
+    for log in &parsed.logs {
+        let level = match log.level.as_str() {
+            "error" => Level::Error,
+            "warn" => Level::Warn,
+            "success" => Level::Success,
+            "debug" => Level::Debug,
+            _ => Level::Info,
+        };
+        logger::append(level, &log.message);
+    }
+
+    Ok(parsed)
+}
+
+/// PS 输出是否报告了"agent 路径不安全（8.3 短路径也救不了）"。
+fn ps_reports_unsafe_path(out: &PsCoreOutput) -> bool {
+    out.logs
+        .iter()
+        .any(|l| l.message.contains("unsafe-agent-path"))
+}
+
+/// Windows 安装：先用就地资源路径跑 PS；若路径不安全（8.3 不可用），
+/// 兜底复制到无空格目录后重试一次。
+fn windows_install(refs: &[&str], state: &WorkspaceState) -> Vec<InstallResult> {
+    let jar = state.agent_jar.clone();
+
+    let run = |jar: &Path, unsafe_flag: &mut bool| -> Option<Vec<InstallResult>> {
+        match run_ps_core("install", refs, jar) {
+            Ok(out) if out.ok => Some(
+                out.results
+                    .into_iter()
+                    .map(|r| InstallResult {
+                        product_id: r.product,
+                        success: r.ok,
+                        vmoptions_path: r.edited.first().cloned(),
+                        edited_paths: r.edited,
+                        jar_path: platform::normalize_path_for_output(jar),
+                        message: r.message.unwrap_or_default(),
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            Ok(out) => {
+                *unsafe_flag = ps_reports_unsafe_path(&out);
+                None
+            }
+            Err(e) => {
+                logger::append(Level::Error, &format!("PowerShell 核心执行失败：{}", e));
+                None
+            }
+        }
+    };
 
     logger::append(
-        logger::Level::Info,
+        Level::Info,
         &format!(
-            "[{}] 已从 {} 处移除 javaagent",
-            product_id,
-            if paths_display.is_empty() {
-                "无".to_string()
-            } else {
-                paths_display.join(", ")
-            }
+            "javaagent 就地引用：{}",
+            platform::normalize_path_for_output(&jar)
         ),
     );
 
-    Ok(InstallResult {
-        product_id: product_id.to_string(),
-        success: true,
-        vmoptions_path: cleaned_paths.first().map(|p| platform::normalize_path_for_output(p)),
-        jar_path: platform::normalize_path_for_output(&jar),
-        message: format!("已从 {} 处移除 javaagent 行", paths_display.len()),
-    })
+    let mut unsafe_path_failure = false;
+    if let Some(results) = run(&jar, &mut unsafe_path_failure) {
+        return results;
+    }
+
+    // 兜底：仅在 PS 上报 unsafe-agent-path（就地路径无法变成无空格路径）时发生。
+    if unsafe_path_failure && ps_failed_unsafe(&jar) {
+        logger::append(
+            Level::Warn,
+            "就地路径无法写入 vmoptions（8.3 短路径不可用），兜底复制 agent 到安全目录（唯一复制场景）",
+        );
+        match crate::agent_home::deploy_fallback(&state.bundle_root) {
+            Ok((safe_root, clean)) => {
+                let safe_jar = safe_root.join("lib.jar");
+                if clean {
+                    let mut retry_unsafe = false;
+                    if let Some(results) = run(&safe_jar, &mut retry_unsafe) {
+                        return results;
+                    }
+                }
+                logger::append(Level::Error, "兜底目录路径仍不安全，安装失败");
+            }
+            Err(e) => logger::append(Level::Error, &format!("兜底部署失败：{}", e)),
+        }
+    }
+
+    refs.iter()
+        .map(|id| InstallResult::skip(id, &jar, "PowerShell 执行失败".into()))
+        .collect()
 }
 
-/// 查找 IDE 自带的 vmoptions 文件。Windows 搜索 %APPDATA%\JetBrains\ 和
-/// C:\Program Files\JetBrains\ 等目录。macOS 搜索 ~/Library/Application Support/JetBrains/。
-/// Linux 搜索 ~/.config/Jetbrains/。使用前缀匹配查找版本号目录。
-pub fn find_ide_vmoptions(product_id: &str) -> Option<PathBuf> {
-    let os = Os::current();
+/// 判定上一次 PS 运行是否因 unsafe-agent-path 失败（查看日志缓冲不可靠，
+/// 这里直接检查路径是否不干净 + PS 失败由调用方路径控制）。
+fn ps_failed_unsafe(jar: &Path) -> bool {
+    // 路径本身干净则不可能是不安全路径问题，避免无谓兜底复制
+    !platform::is_clean_agent_path(&platform::normalize_path_for_output(jar))
+}
 
-    // vmoptions 文件名候选（Windows 用 .exe.vmoptions，其他平台用 .vmoptions）
-    let vmoptions_names: Vec<String> = match os {
-        Os::Windows => vec![
-            format!("{}64.exe.vmoptions", product_id),
-            format!("{}.exe.vmoptions", product_id),
-            format!("{}.vmoptions", product_id),
-        ],
-        _ => vec![format!("{}.vmoptions", product_id)],
-    };
+// ---------------------------------------------------------------------------
+// macOS / Linux 原生实现（与 PS 同语义）
+// ---------------------------------------------------------------------------
 
-    // 产品目录名前缀映射（AppData 中的目录名前缀）
-    // 例如 IntelliJ IDEA 在 AppData 中是 IntelliJIdea2024.2
-    let dir_prefix = product_dir_prefix(product_id);
-
-    // 搜索目录列表
-    let search_roots: Vec<PathBuf> = match os {
-        Os::Windows => {
-            let mut roots = Vec::new();
-            // %APPDATA%\JetBrains\
-            if let Some(appdata) = dirs::config_dir() {
-                roots.push(appdata.join("JetBrains"));
-            }
-            // C:\Program Files\JetBrains\ (try common drives)
-            for drive in &["C:", "D:", "E:"] {
-                roots.push(PathBuf::from(format!("{}\\Program Files\\JetBrains", drive)));
-                roots.push(PathBuf::from(format!("{}\\Program Files (x86)\\JetBrains", drive)));
-            }
-            // %LOCALAPPDATA%\JetBrains\Toolbox\apps\ (Toolbox installation)
-            if let Some(local) = dirs::data_local_dir() {
-                roots.push(local.join("JetBrains").join("Toolbox").join("apps"));
-            }
-            // %LOCALAPPDATA%\Programs\
-            if let Some(local) = dirs::data_local_dir() {
-                roots.push(local.join("Programs"));
-            }
-            roots
+/// 剥离文件中全部受管行（-javaagent:*jar* / -Dja.netfilter.name=*），
+/// 返回移除的行数。
+fn strip_managed_lines(path: &Path) -> Result<usize> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("读取 vmoptions 失败：{}", path.display()))?;
+    let kept: Vec<&str> = content
+        .lines()
+        .filter(|l| !locate::is_agent_line(l) && !locate::is_name_line(l))
+        .collect();
+    let removed = content.lines().count() - kept.len();
+    if removed > 0 {
+        let mut out = kept.join("\n");
+        if !out.is_empty() {
+            out.push('\n');
         }
-        Os::Macos => {
-            let mut roots = Vec::new();
-            if let Some(home) = dirs::home_dir() {
-                roots.push(home.join("Library").join("Application Support").join("JetBrains"));
-            }
-            // /Applications/ for IDE install dirs
-            roots.push(PathBuf::from("/Applications"));
-            roots
-        }
-        Os::Linux => {
-            let mut roots = Vec::new();
-            if let Some(config) = dirs::config_dir() {
-                roots.push(config.join("JetBrains"));
-            }
-            // /opt/ for IDE install dirs
-            roots.push(PathBuf::from("/opt"));
-            // ~/.local/share/JetBrains/
-            if let Some(home) = dirs::home_dir() {
-                roots.push(home.join(".local").join("share").join("JetBrains"));
-            }
-            roots
-        }
-    };
+        fs::write(path, out)
+            .with_context(|| format!("写入 vmoptions 失败：{}", path.display()))?;
+        logger::append(
+            Level::Info,
+            &format!("已清理 {} 行旧 agent 配置：{}", removed, path.display()),
+        );
+    }
+    Ok(removed)
+}
 
-    // 在每个搜索根目录中查找 vmoptions 文件
-    for search_root in &search_roots {
-        if !search_root.exists() {
+/// 原生安装（Unix）：环境变量清理 + 定位 + 剥离 + 追加。
+fn native_install(product_id: &str, agent_line: &str) -> (bool, Vec<PathBuf>) {
+    // 1. 删除旧环境变量（当前进程 + launchctl + shell rc）
+    let env_var = platform::env_var_name(product_id);
+    std::env::remove_var(&env_var);
+    if Os::current() == Os::Macos {
+        let _ = Command::new("launchctl").args(["unsetenv", &env_var]).status();
+    }
+    remove_from_shell_rc(&env_var);
+
+    // 2. 定位
+    let locations = locate::find_product_locations(product_id);
+    let mut edited = Vec::new();
+
+    for loc in &locations {
+        for vm in loc.all_vmoptions() {
+            if !vm.exists() {
+                continue;
+            }
+            if let Err(e) = strip_managed_lines(&vm) {
+                logger::append(Level::Error, &format!("{}：{}", vm.display(), e));
+                continue;
+            }
+            match vmoptions::append_lines(&vm, agent_line) {
+                Ok(()) => edited.push(vm),
+                Err(e) => logger::append(Level::Error, &format!("{}：{}", vm.display(), e)),
+            }
+        }
+    }
+
+    (!edited.is_empty(), edited)
+}
+
+/// 原生卸载（Unix）。
+fn native_uninstall(product_id: &str) -> Vec<PathBuf> {
+    let env_var = platform::env_var_name(product_id);
+    std::env::remove_var(&env_var);
+    if Os::current() == Os::Macos {
+        let _ = Command::new("launchctl").args(["unsetenv", &env_var]).status();
+    }
+    remove_from_shell_rc(&env_var);
+
+    let mut cleaned = Vec::new();
+    for loc in locate::find_product_locations(product_id) {
+        for vm in loc.all_vmoptions() {
+            if !vm.exists() {
+                continue;
+            }
+            if let Ok(n) = strip_managed_lines(&vm) {
+                if n > 0 {
+                    cleaned.push(vm);
+                }
+            }
+        }
+    }
+    cleaned
+}
+
+/// 从 ~/.profile、~/.bashrc、~/.zshrc 中移除 `<PRODUCT>_VM_OPTIONS=` 行。
+fn remove_from_shell_rc(env_var: &str) {
+    let marker = format!("{}_VM_OPTIONS=", env_var);
+    for name in [".profile", ".bashrc", ".zshrc"] {
+        let Some(home) = dirs::home_dir() else {
             continue;
+        };
+        let rc = home.join(name);
+        let Ok(existing) = fs::read_to_string(&rc) else {
+            continue;
+        };
+        let filtered: String = existing
+            .lines()
+            .filter(|l| !l.contains(&marker))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if filtered != existing {
+            let _ = fs::write(&rc, filtered + "\n");
         }
-        if let Ok(entries) = fs::read_dir(search_root) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    let dir_name = path.file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("");
+    }
+}
 
-                    // 检查目录名是否匹配产品前缀（前缀匹配，忽略大小写）
-                    let dir_matches = dir_name.to_lowercase().starts_with(&dir_prefix.to_lowercase());
+// ---------------------------------------------------------------------------
+// 对外批量接口（命令层调用）
+// ---------------------------------------------------------------------------
 
-                    if dir_matches {
-                        // 在匹配的目录中查找 vmoptions 文件
-                        for name in &vmoptions_names {
-                            let vmoptions = path.join(name);
-                            if vmoptions.exists() {
-                                return Some(vmoptions);
-                            }
-                            // 在 bin 子目录中（Windows IDE 安装目录结构）
-                            let vmoptions_bin = path.join("bin").join(name);
-                            if vmoptions_bin.exists() {
-                                return Some(vmoptions_bin);
-                            }
-                        }
-                    }
+/// 批量安装（单产品或全部产品一次调用）。
+/// Windows 上是一次 PowerShell 进程；Unix 上是原生循环。
+/// 授权文件（`<prd>.key`）由命令层在安装成功后另行生成（license::generate_keys）。
+pub fn install_batch(state: &WorkspaceState, product_ids: &[String]) -> Vec<InstallResult> {
+    if product_ids.is_empty() {
+        return Vec::new();
+    }
+    let refs: Vec<&str> = product_ids.iter().map(|s| s.as_str()).collect();
 
-                    // Toolbox 安装：在 apps/<product>/ch-0/<version>/bin/ 下
-                    // 搜索更深一层
-                    if search_root.ends_with("apps") {
-                        if let Ok(sub_entries) = fs::read_dir(&path) {
-                            for sub_entry in sub_entries.flatten() {
-                                let sub_path = sub_entry.path();
-                                if sub_path.is_dir() {
-                                    // ch-0 目录
-                                    let ch_dir = sub_path.join("ch-0");
-                                    if ch_dir.exists() {
-                                        if let Ok(ch_entries) = fs::read_dir(&ch_dir) {
-                                            for ch_entry in ch_entries.flatten() {
-                                                let ver_path = ch_entry.path();
-                                                if ver_path.is_dir() {
-                                                    for name in &vmoptions_names {
-                                                        let vmoptions = ver_path.join("bin").join(name);
-                                                        if vmoptions.exists() {
-                                                            return Some(vmoptions);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+    match Os::current() {
+        Os::Windows => windows_install(&refs, state),
+        _ => {
+            let jar = state.agent_jar.clone();
+            let agent_line = platform::javaagent_line(&jar);
+
+            logger::append(
+                Level::Info,
+                &format!(
+                    "javaagent 就地引用：{}",
+                    platform::normalize_path_for_output(&jar)
+                ),
+            );
+
+            let mut results = Vec::new();
+            for id in &refs {
+                let (ok, edited) = native_install(id, &agent_line);
+                if ok {
+                    logger::append(
+                        Level::Success,
+                        &format!(
+                            "[{}] 已安装 -> {}",
+                            id,
+                            edited
+                                .iter()
+                                .map(|p| platform::normalize_path_for_output(p))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                    );
+                } else {
+                    logger::append(
+                        Level::Warn,
+                        &format!("[{}] 未找到 IDE 的 vmoptions，已跳过", id),
+                    );
                 }
+                results.push(result_from(id, ok, edited, &jar, ""));
+            }
+            results
+        }
+    }
+}
+
+/// 批量卸载（同时移除授权文件）。
+pub fn uninstall_batch(state: &WorkspaceState, product_ids: &[String]) -> Vec<InstallResult> {
+    if product_ids.is_empty() {
+        return Vec::new();
+    }
+    let refs: Vec<&str> = product_ids.iter().map(|s| s.as_str()).collect();
+    let jar = state.agent_jar.clone();
+
+    let results = match Os::current() {
+        Os::Windows => match run_ps_core("uninstall", &refs, &jar) {
+            Ok(out) if out.ok => out
+                .results
+                .into_iter()
+                .map(|r| InstallResult {
+                    product_id: r.product,
+                    success: true,
+                    vmoptions_path: r.edited.first().cloned(),
+                    edited_paths: r.edited,
+                    jar_path: platform::normalize_path_for_output(&jar),
+                    message: r.message.unwrap_or_default(),
+                })
+                .collect(),
+            _ => refs
+                .iter()
+                .map(|id| InstallResult::skip(id, &jar, "PowerShell 执行失败".into()))
+                .collect(),
+        },
+        _ => {
+            let mut results = Vec::new();
+            for id in &refs {
+                let cleaned = native_uninstall(id);
+                logger::append(
+                    Level::Success,
+                    &format!("[{}] 已移除 javaagent（{} 处）", id, cleaned.len()),
+                );
+                results.push(result_from(id, true, cleaned, &jar, ""));
+            }
+            results
+        }
+    };
+
+    // 移除自定义授权生成的 <prd>.key（恢复干净状态）
+    license::remove_keys(product_ids);
+
+    results
+}
+
+/// 仅清理环境变量。
+pub fn cleanup_env(state: &WorkspaceState, product_ids: &[String]) {
+    let refs: Vec<&str> = product_ids.iter().map(|s| s.as_str()).collect();
+    let jar = state.agent_jar.clone();
+    match Os::current() {
+        Os::Windows => {
+            let _ = run_ps_core("cleanup-env", &refs, &jar);
+        }
+        _ => {
+            for id in refs {
+                let env_var = platform::env_var_name(id);
+                std::env::remove_var(&env_var);
+                if Os::current() == Os::Macos {
+                    let _ = Command::new("launchctl")
+                        .args(["unsetenv", &env_var])
+                        .status();
+                }
+                remove_from_shell_rc(&env_var);
             }
         }
     }
-
-    None
-}
-
-/// 产品 ID 到 JetBrains AppData 目录名前缀的映射。
-/// 例如 idea -> IntelliJIdea, pycharm -> PyCharm, etc.
-fn product_dir_prefix(product_id: &str) -> String {
-    match product_id {
-        "idea" => "IntelliJIdea".to_string(),
-        "clion" => "CLion".to_string(),
-        "phpstorm" => "PhpStorm".to_string(),
-        "goland" => "GoLand".to_string(),
-        "pycharm" => "PyCharm".to_string(),
-        "webstorm" => "WebStorm".to_string(),
-        "webide" => "WebStorm".to_string(),
-        "rider" => "Rider".to_string(),
-        "datagrip" => "DataGrip".to_string(),
-        "rubymine" => "RubyMine".to_string(),
-        "dataspell" => "DataSpell".to_string(),
-        "aqua" => "Aqua".to_string(),
-        "rustrover" => "RustRover".to_string(),
-        "gateway" => "JetBrainsGateway".to_string(),
-        "jetbrains_client" => "JetBrainsClient".to_string(),
-        "jetbrainsclient" => "JetBrainsClient".to_string(),
-        "studio" => "AndroidStudio".to_string(),
-        "devecostudio" => "DevEcoStudio".to_string(),
-        _ => product_id.to_string(),
-    }
-}
-
-/// Windows 上广播 WM_SETTINGCHANGE 消息，让所有顶级窗口（包括 Explorer）
-/// 感知环境变量变更。使用 PowerShell 调用 Win32 API。
-fn broadcast_env_change() {
-    #[cfg(target_os = "windows")]
-    {
-        let ps_script = r#"
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public class Win32Env {
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-    public static extern IntPtr SendMessageTimeout(
-        IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam,
-        uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
-}
-"@ -ErrorAction SilentlyContinue
-[Win32Env]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]([UIntPtr]::Zero)) | Out-Null
-"#;
-        std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", ps_script])
-            .status()
-            .ok();
-    }
-}
-
-/// Copy-on-write：将项目自带的 vmoptions 模板复制到工作区，返回工作区副本路径。
-fn copy_on_write(template: &Path, workdir: &Path, product_id: &str) -> Result<PathBuf> {
-    let target_dir = workdir.join("vmoptions");
-    fs::create_dir_all(&target_dir)?;
-    let target = target_dir.join(format!("{}.vmoptions", product_id));
-    fs::copy(template, &target)?;
-    log::info!(
-        "copy-on-write：{} -> {}",
-        template.display(),
-        target.display()
-    );
-    Ok(target)
-}
-
-/// 在 ~/.profile、~/.bashrc、~/.zshrc 中追加 `export <ENV>=<path>`。幂等。
-fn write_shell_rc(env_var: &str, value: &str) -> Result<()> {
-    let line = format!("export {}=\"{}\"", env_var, value);
-    let mut added = false;
-
-    for path_str in [".profile", ".bashrc", ".zshrc"] {
-        if let Some(home) = dirs::home_dir() {
-            let rc = home.join(path_str);
-            if let Ok(existing) = fs::read_to_string(&rc) {
-                if existing.contains(&line) {
-                    continue;
-                }
-                let mut new = existing.trim_end_matches('\n').to_string();
-                if !new.is_empty() {
-                    new.push('\n');
-                }
-                new.push_str(&line);
-                new.push('\n');
-                fs::write(&rc, new).ok();
-                added = true;
-            } else {
-                fs::write(&rc, format!("{}\n", line)).ok();
-                added = true;
-            }
-        }
-    }
-
-    if !added {
-        log::warn!("无法将环境变量 {} 写入任何 shell rc 文件", env_var);
-    }
-    Ok(())
-}
-
-/// 从 ~/.profile、~/.bashrc、~/.zshrc 中移除指定环境变量的 export 行。
-fn remove_shell_rc(env_var: &str) -> Result<()> {
-    let pattern = format!("export {}=", env_var);
-    for path_str in [".profile", ".bashrc", ".zshrc"] {
-        if let Some(home) = dirs::home_dir() {
-            let rc = home.join(path_str);
-            if let Ok(existing) = fs::read_to_string(&rc) {
-                let filtered: String = existing
-                    .lines()
-                    .filter(|l| !l.contains(&pattern))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if filtered != existing {
-                    fs::write(&rc, filtered).ok();
-                }
-            }
-        }
-    }
-    Ok(())
 }

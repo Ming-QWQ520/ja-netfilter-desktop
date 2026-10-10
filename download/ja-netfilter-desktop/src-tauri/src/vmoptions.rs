@@ -1,133 +1,89 @@
-//! vmoptions 文件读写，包含感知 javaagent 的编辑逻辑。
+//! vmoptions 文件读写。
 //!
-//! 读时优先工作区副本，回退项目自带模板。写时 copy-on-write 到工作区。
-//! lib.jar 始终使用项目自带路径（不复制到工作区）。
+//! v0.1.0 语义（零复制，最小写入）：
+//!   - 编辑目标有两类：
+//!     1) **真实 IDE vmoptions**（绝对路径，来自 locate::find_product_locations）
+//!     2) **应用自带的模板**（产品 id → agent_root/vmoptions/<id>.vmoptions），
+//!        仅供无 IDE 时查看/编辑参考，不参与激活。
+//!   - `append_lines` 供安装器追加 `-javaagent:` 行（仅此一行，与 ckey_script
+//!     一致；授权信息走 `<prd>.key` 文件而非 vmoptions）。
+//!   - `strip_managed` 供"清除 agent 配置"动作使用（等价 ckey 的 Revert），
+//!     同时清理历史版本遗留的 `-Dja.netfilter.name=` 行。
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use crate::platform::javaagent_line;
-use crate::workspace::{self, WorkspaceState};
+use crate::locate;
+use crate::workspace::WorkspaceState;
 
-/// 读取 vmoptions 文件：优先工作区副本，回退项目自带模板。
-/// `path_or_id` 可以是绝对路径、工作区/项目根目录下的相对路径、或纯产品 id。
+/// 解析 `path_or_id`：
+///   - 绝对路径 → 原样
+///   - 产品 id（如 `idea`）→ 该产品检测到的主 vmoptions（Roaming > bin），
+///     未检测到 IDE 时回退应用自带模板
+pub fn resolve_target(state: &WorkspaceState, path_or_id: &str) -> Result<PathBuf> {
+    let p = Path::new(path_or_id);
+    if p.is_absolute() {
+        return Ok(p.to_path_buf());
+    }
+    let id = path_or_id;
+    if id.contains('/') || id.contains('\\') || id.ends_with(".vmoptions") {
+        // 视为 agent_root 下的相对路径
+        return Ok(state.agent_root.join(id));
+    }
+    // 产品 id → 检测
+    let locations = locate::find_product_locations(id);
+    for loc in &locations {
+        if let Some(p) = loc.primary_vmoptions() {
+            return Ok(p);
+        }
+    }
+    let tpl = state.agent_root.join("vmoptions").join(format!("{}.vmoptions", id));
+    if tpl.exists() {
+        return Ok(tpl);
+    }
+    anyhow::bail!("未找到 {} 的 vmoptions 文件（未检测到 IDE 且模板缺失）", id)
+}
+
+/// 读取 vmoptions 文本。
 pub fn read_text(state: &WorkspaceState, path_or_id: &str) -> Result<String> {
-    // 绝对路径直接读
-    let p = Path::new(path_or_id);
-    if p.is_absolute() {
-        return fs::read_to_string(p)
-            .with_context(|| format!("读取 vmoptions 失败：{}", p.display()));
-    }
-
-    // 展开 id 为相对路径
-    let rel = expand_id_to_rel(path_or_id);
-
-    // 通过 workspace::read_resource 读取（优先工作区，回退项目自带）
-    workspace::read_resource(state, &rel)
+    let p = resolve_target(state, path_or_id)?;
+    fs::read_to_string(&p).with_context(|| format!("读取 vmoptions 失败：{}", p.display()))
 }
 
-/// 将文本写回 vmoptions 文件：copy-on-write 到工作区。
+/// 写回 vmoptions 文本（直接作用于目标文件；应用资源目录随 per-user 安装可写）。
 pub fn write_text(state: &WorkspaceState, path_or_id: &str, content: &str) -> Result<()> {
-    // 绝对路径直接写
-    let p = Path::new(path_or_id);
-    if p.is_absolute() {
-        if let Some(parent) = p.parent() {
-            fs::create_dir_all(parent).ok();
-        }
-        return fs::write(p, content)
-            .with_context(|| format!("写入 vmoptions 失败：{}", p.display()));
+    let p = resolve_target(state, path_or_id)?;
+    if let Some(parent) = p.parent() {
+        fs::create_dir_all(parent).ok();
     }
-
-    let rel = expand_id_to_rel(path_or_id);
-    workspace::write_resource(state, &rel, content)?;
-    Ok(())
+    fs::write(&p, content).with_context(|| format!("写入 vmoptions 失败：{}", p.display()))
 }
 
-/// 重置 vmoptions：删除工作区副本，使后续读取回退到项目自带模板。
-pub fn reset_to_template(state: &WorkspaceState, path_or_id: &str) -> Result<()> {
-    // 绝对路径：若是工作区副本则删除；否则不做处理
-    let p = Path::new(path_or_id);
-    if p.is_absolute() {
-        if p.starts_with(state.workdir()) && p.exists() {
-            fs::remove_file(p)?;
-        }
-        return Ok(());
-    }
-
-    let rel = expand_id_to_rel(path_or_id);
-    workspace::reset_resource(state, &rel)
-}
-
-/// 追加或刷新 vmoptions 中的 `-javaagent:` 行，使其指向项目自带的 `lib.jar`。
-/// 若提供了 `license_name`，则同时追加 `-Dja.netfilter.name=<license_name>` 行。
-pub fn ensure_javaagent(
-    vmoptions_path: &Path,
-    jar_path: &Path,
-    license_name: Option<&str>,
-) -> Result<()> {
-    let content = fs::read_to_string(vmoptions_path).unwrap_or_default();
-    let line = javaagent_line(jar_path);
-
-    let cleaned = strip_managed_lines(&content);
-    let mut out = cleaned.trim_end_matches('\n').to_string();
+/// 清除文件中的受管行（-javaagent / -Dja.netfilter.name）。
+pub fn strip_managed(path: &Path) -> Result<()> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("读取 vmoptions 失败：{}", path.display()))?;
+    let kept: Vec<&str> = content
+        .lines()
+        .filter(|l| !locate::is_agent_line(l) && !locate::is_name_line(l))
+        .collect();
+    let mut out = kept.join("\n");
     if !out.is_empty() {
         out.push('\n');
     }
-    out.push_str(&line);
+    fs::write(path, out).with_context(|| format!("写入 vmoptions 失败：{}", path.display()))
+}
+
+/// 追加 `-javaagent:` 行（安装器使用；ckey_script 仅写这一行）。
+pub fn append_lines(path: &Path, agent_line: &str) -> Result<()> {
+    let content = fs::read_to_string(path).unwrap_or_default();
+    let mut out = content.trim_end_matches('\n').to_string();
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str(agent_line);
     out.push('\n');
-    if let Some(name) = license_name {
-        if !name.trim().is_empty() {
-            out.push_str(&format!("-Dja.netfilter.name={}", name.trim()));
-            out.push('\n');
-        }
-    }
-
-    fs::write(vmoptions_path, out)?;
-    Ok(())
-}
-
-/// 从 vmoptions 文件中移除所有指向 ja-netfilter 的 `-javaagent:` 行
-/// 以及自定义授权名称行。
-pub fn strip_javaagent(vmoptions_path: &Path) -> Result<()> {
-    let content = fs::read_to_string(vmoptions_path).unwrap_or_default();
-    let cleaned = strip_managed_lines(&content);
-    fs::write(vmoptions_path, cleaned)?;
-    Ok(())
-}
-
-/// 移除以下两类行：
-///   - `-javaagent:...ja-netfilter...` 或 `-javaagent:...=jetbrains`
-///   - `-Dja.netfilter.name=...`
-fn strip_managed_lines(content: &str) -> String {
-    content
-        .lines()
-        .filter(|l| {
-            let t = l.trim();
-            if t.starts_with("-javaagent:")
-                && (t.contains("ja-netfilter") || t.ends_with("=jetbrains"))
-            {
-                return false;
-            }
-            if t.starts_with("-Dja.netfilter.name=") {
-                return false;
-            }
-            true
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// 将纯产品 id（如 `idea`）展开为 `vmoptions/idea.vmoptions`。
-/// 若已包含路径分隔符或 `.vmoptions` 后缀，则原样返回。
-fn expand_id_to_rel(path_or_id: &str) -> String {
-    if path_or_id.contains('/')
-        || path_or_id.contains('\\')
-        || path_or_id.ends_with(".vmoptions")
-    {
-        path_or_id.to_string()
-    } else {
-        format!("vmoptions/{}.vmoptions", path_or_id)
-    }
+    fs::write(path, out).with_context(|| format!("写入 vmoptions 失败：{}", path.display()))
 }

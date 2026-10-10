@@ -1,12 +1,10 @@
 // Thin wrappers around the `invoke` calls that talk to the Rust backend.
-// All functions return Promises so the UI can `await` them inside event
-// handlers without throwing raw errors — failures are converted to
-// Error objects with the backend's string reason as the message.
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ConfigFile,
   InstallResult,
+  LicenseResult,
   LogEntry,
   PluginJar,
   ProductInfo,
@@ -19,25 +17,29 @@ export const api = {
   refreshProductStatus: (id: string) =>
     invoke<ProductInfo>("refresh_product_status", { productId: id }),
 
-  // Install / Uninstall
-  // `licenseName` is optional. When provided, the backend appends an extra
-  //   -Dja.netfilter.name=<licenseName>
-  // line to the vmoptions file alongside the -javaagent line.
-  installProduct: (id: string, licenseName?: string) =>
-    invoke<InstallResult>("install_product", { productId: id, licenseName }),
+  // Install / Uninstall（异步命令；install/uninstall all 一次调用覆盖全部产品；
+  // 安装成功后自动生成 <prd>.key 授权文件）
+  installProduct: (id: string, licenseName?: string, licenseExpiry?: string) =>
+    invoke<InstallResult>("install_product", { productId: id, licenseName, licenseExpiry }),
   uninstallProduct: (id: string) =>
     invoke<InstallResult>("uninstall_product", { productId: id }),
-  installAllProducts: (licenseName?: string) =>
-    invoke<InstallResult[]>("install_all_products", { licenseName }),
-  uninstallAllProducts: () => invoke<InstallResult[]>("uninstall_all_products"),
+  installAllProducts: (licenseName?: string, licenseExpiry?: string) =>
+    invoke<InstallResult[]>("install_all_products", { licenseName, licenseExpiry }),
+  uninstallAllProducts: () =>
+    invoke<InstallResult[]>("uninstall_all_products"),
+  cleanupEnvVars: () => invoke<void>("cleanup_env_vars"),
 
-  // vmoptions
+  // 自定义授权（重新生成 <prd>.key，无需重装）
+  generateLicenseKeys: (licenseName?: string, licenseExpiry?: string) =>
+    invoke<LicenseResult[]>("generate_license_keys", { licenseName, licenseExpiry }),
+
+  // vmoptions（path_or_id：绝对路径或产品 id）
   readVmoptions: (pathOrId: string) =>
     invoke<string>("read_vmoptions", { pathOrId }),
   writeVmoptions: (pathOrId: string, content: string) =>
     invoke<void>("write_vmoptions", { pathOrId, content }),
-  resetVmoptions: (pathOrId: string) =>
-    invoke<void>("reset_vmoptions", { pathOrId }),
+  stripVmoptions: (pathOrId: string) =>
+    invoke<void>("strip_vmoptions", { pathOrId }),
 
   // Configs
   listConfigs: () => invoke<ConfigFile[]>("list_configs"),
@@ -51,8 +53,8 @@ export const api = {
 
   // Workspace
   getWorkspaceInfo: () => invoke<WorkspaceInfo>("get_workspace_info"),
-  revealInFinder: (path: string) => invoke<void>("reveal_in_finder", { path }),
-  pickJarFile: () => invoke<string | null>("pick_jar_file"),
+  revealInFinder: (path: string) =>
+    invoke<void>("reveal_in_finder", { path }),
 
   // Logs
   getLogHistory: () => invoke<LogEntry[]>("get_log_history"),

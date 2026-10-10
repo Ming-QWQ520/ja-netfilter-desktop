@@ -1,21 +1,31 @@
-//! Tauri command surface — the bridge between the Vue frontend and the Rust
-//! backend modules.
-
-use std::path::PathBuf;
+//! Tauri command surface — 前端与 Rust 后端的桥梁。
+//!
+//! v0.1.0：安装/卸载命令异步化（spawn_blocking），避免 PowerShell 调用
+//! 期间冻结 UI；install_all 一次调用覆盖全部产品（单次 PS 进程）；
+//! 自定义授权（名称/到期时间）随安装命令贯通，安装成功后自动生成
+//! `<prd>.key` 授权文件（仿 ckey_script.ps1）。
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::config::{self, ConfigFile};
 use crate::installer::{self, InstallResult};
+use crate::license::{self, LicenseResult};
 use crate::logger::{self, LogEntry};
 use crate::platform::Os;
 use crate::products::{self, ProductInfo};
-use crate::workspace::WorkspaceState;
+use crate::workspace::{self, WorkspaceState};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceInfo {
+    /// 杂项数据目录。
     pub workdir: String,
+    /// 应用自带资源目录（agent 就地引用的根）。
+    pub bundle_root: String,
+    /// agent 运行时目录（正常 == bundle_root；极端情况指向兜底副本）。
+    pub agent_root: String,
+    /// agent 路径是否"干净"（无空格/非 ASCII）。
+    pub agent_clean: bool,
     pub jar_path: String,
     pub jar_exists: bool,
     pub plugin_jars: Vec<String>,
@@ -45,77 +55,160 @@ pub fn refresh_product_status(
     Ok(products::detect_one(&product_id, name, &state))
 }
 
-// -------- Install / Uninstall ----------------------------------------------
+// -------- Install / Uninstall（异步，避免阻塞 UI） --------------------------
 
 #[tauri::command]
-pub fn install_product(
-    state: State<'_, WorkspaceState>,
+pub async fn install_product(
+    app: AppHandle,
     product_id: String,
     license_name: Option<String>,
+    license_expiry: Option<String>,
 ) -> Result<InstallResult, String> {
-    installer::install(&state, &product_id, license_name.as_deref())
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<WorkspaceState>();
+        let results = installer::install_batch(&state, &[product_id]);
+        // 授权文件生成（best-effort：失败仅记录日志，不影响安装结果）
+        for r in &results {
+            if r.success {
+                let lr = license::generate_keys(
+                    &state,
+                    std::slice::from_ref(&r.product_id),
+                    license_name.as_deref(),
+                    license_expiry.as_deref(),
+                );
+                report_license_results(&lr);
+            }
+        }
+        results
+            .into_iter()
+            .next()
+            .ok_or_else(|| "无结果".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn uninstall_product(
-    state: State<'_, WorkspaceState>,
+pub async fn uninstall_product(
+    app: AppHandle,
     product_id: String,
 ) -> Result<InstallResult, String> {
-    installer::uninstall(&state, &product_id).map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<WorkspaceState>();
+        installer::uninstall_batch(&state, &[product_id])
+            .into_iter()
+            .next()
+            .ok_or_else(|| "无结果".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn install_all_products(
-    state: State<'_, WorkspaceState>,
+pub async fn install_all_products(
+    app: AppHandle,
     license_name: Option<String>,
+    license_expiry: Option<String>,
 ) -> Result<Vec<InstallResult>, String> {
-    let mut results = Vec::new();
-    for (id, _) in products::list_known_products() {
-        match installer::install(&state, id, license_name.as_deref()) {
-            Ok(r) => results.push(r),
-            Err(e) => {
-                logger::append(
-                    logger::Level::Error,
-                    &format!("[{}] install error: {}", id, e),
-                );
-                results.push(InstallResult {
-                    product_id: id.to_string(),
-                    success: false,
-                    vmoptions_path: None,
-                    jar_path: String::new(),
-                    message: format!("{}", e),
-                });
-            }
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<WorkspaceState>();
+        let ids: Vec<String> = products::list_known_products()
+            .into_iter()
+            .map(|(id, _)| id.to_string())
+            .collect();
+        let results = installer::install_batch(&state, &ids);
+        // 为安装成功且有产品码的产品生成授权文件（ckey_script 的一次性流程）
+        let ok_ids: Vec<String> = results
+            .iter()
+            .filter(|r| r.success)
+            .map(|r| r.product_id.clone())
+            .collect();
+        if !ok_ids.is_empty() {
+            let lr = license::generate_keys(
+                &state,
+                &ok_ids,
+                license_name.as_deref(),
+                license_expiry.as_deref(),
+            );
+            report_license_results(&lr);
         }
-    }
-    Ok(results)
+        Ok(results)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn uninstall_all_products(
-    state: State<'_, WorkspaceState>,
-) -> Result<Vec<InstallResult>, String> {
-    let mut results = Vec::new();
-    for (id, _) in products::list_known_products() {
-        match installer::uninstall(&state, id) {
-            Ok(r) => results.push(r),
-            Err(e) => {
-                logger::append(
-                    logger::Level::Error,
-                    &format!("[{}] uninstall error: {}", id, e),
-                );
-                results.push(InstallResult {
-                    product_id: id.to_string(),
-                    success: false,
-                    vmoptions_path: None,
-                    jar_path: String::new(),
-                    message: format!("{}", e),
-                });
-            }
-        }
+pub async fn uninstall_all_products(app: AppHandle) -> Result<Vec<InstallResult>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<WorkspaceState>();
+        let ids: Vec<String> = products::list_known_products()
+            .into_iter()
+            .map(|(id, _)| id.to_string())
+            .collect();
+        Ok(installer::uninstall_batch(&state, &ids))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn cleanup_env_vars(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<WorkspaceState>();
+        let ids: Vec<String> = products::list_known_products()
+            .into_iter()
+            .map(|(id, _)| id.to_string())
+            .collect();
+        installer::cleanup_env(&state, &ids);
+        logger::append(
+            logger::Level::Success,
+            "已清理全部 <PRODUCT>_VM_OPTIONS 环境变量（User + Machine）",
+        );
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// -------- License（自定义授权） ---------------------------------------------
+
+/// 把授权生成结果写入日志。
+fn report_license_results(results: &[LicenseResult]) {
+    let ok = results.iter().filter(|r| r.ok).count();
+    let skipped = results.len() - ok;
+    if ok > 0 {
+        logger::append(
+            logger::Level::Success,
+            &format!("授权文件生成完成：{} 个成功，{} 个跳过/失败", ok, skipped),
+        );
     }
-    Ok(results)
+}
+
+#[tauri::command]
+pub async fn generate_license_keys(
+    app: AppHandle,
+    license_name: Option<String>,
+    license_expiry: Option<String>,
+) -> Result<Vec<LicenseResult>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<WorkspaceState>();
+        // 检测到的产品全部生成（未检测到配置目录的产品会被跳过并说明原因）
+        let ids: Vec<String> = products::list_known_products()
+            .into_iter()
+            .map(|(id, _)| id.to_string())
+            .collect();
+        let results = license::generate_keys(
+            &state,
+            &ids,
+            license_name.as_deref(),
+            license_expiry.as_deref(),
+        );
+        report_license_results(&results);
+        Ok(results)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // -------- vmoptions --------------------------------------------------------
@@ -137,12 +230,14 @@ pub fn write_vmoptions(
     crate::vmoptions::write_text(&state, &path_or_id, &content).map_err(|e| e.to_string())
 }
 
+/// 清除目标 vmoptions 中的受管行（-javaagent / 遗留 -Dja.netfilter.name）。
 #[tauri::command]
-pub fn reset_vmoptions(
+pub fn strip_vmoptions(
     state: State<'_, WorkspaceState>,
     path_or_id: String,
 ) -> Result<(), String> {
-    crate::vmoptions::reset_to_template(&state, &path_or_id).map_err(|e| e.to_string())
+    let p = crate::vmoptions::resolve_target(&state, &path_or_id).map_err(|e| e.to_string())?;
+    crate::vmoptions::strip_managed(&p).map_err(|e| e.to_string())
 }
 
 // -------- Configs ----------------------------------------------------------
@@ -182,9 +277,8 @@ pub struct PluginJar {
 
 #[tauri::command]
 pub fn read_plugin_jars(state: State<'_, WorkspaceState>) -> Result<Vec<PluginJar>, String> {
-    let resource_root = state.resource_root();
-    // 目录名为 plugins-jetbrains（与 -javaagent:...=jetbrains 参数对应）
-    let plugins_dir = resource_root.join("plugins-jetbrains");
+    // 应用自带资源目录内的 plugins-jetbrains/（JVM 实际加载的插件）
+    let plugins_dir = state.agent_root.join("plugins-jetbrains");
     let mut out = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
         for entry in entries.flatten() {
@@ -203,6 +297,7 @@ pub fn read_plugin_jars(state: State<'_, WorkspaceState>) -> Result<Vec<PluginJa
             }
         }
     }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
 }
 
@@ -213,37 +308,35 @@ pub fn get_workspace_info(
     state: State<'_, WorkspaceState>,
     app: AppHandle,
 ) -> Result<WorkspaceInfo, String> {
-    let workdir = state.workdir();
-    let resource_root = state.resource_root();
-    let jar_path = resource_root.join("lib.jar");
-    let vmoptions_dir_resource = resource_root.join("vmoptions");
-    let config_dir_resource = resource_root.join("config-jetbrains");
-    let plugins_dir = resource_root.join("plugins-jetbrains");
+    let jar_path = state.agent_jar.clone();
+    let plugins_dir = state.agent_root.join("plugins-jetbrains");
 
     let mut plugin_jars = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
         for entry in entries.flatten() {
-            if entry
-                .path()
-                .extension()
-                .and_then(|s| s.to_str())
-                == Some("jar")
-            {
-                plugin_jars.push(entry.path().display().to_string());
+            if entry.path().extension().and_then(|s| s.to_str()) == Some("jar") {
+                plugin_jars.push(crate::platform::normalize_path_for_output(&entry.path()));
             }
         }
     }
+    plugin_jars.sort();
 
     Ok(WorkspaceInfo {
-        workdir: crate::platform::normalize_path_for_output(&workdir),
+        workdir: crate::platform::normalize_path_for_output(&state.workdir),
+        bundle_root: crate::platform::normalize_path_for_output(&state.bundle_root),
+        agent_root: crate::platform::normalize_path_for_output(&state.agent_root),
+        agent_clean: crate::platform::is_clean_agent_path(
+            &crate::platform::normalize_path_for_output(&jar_path),
+        ),
         jar_path: crate::platform::normalize_path_for_output(&jar_path),
         jar_exists: jar_path.exists(),
-        plugin_jars: plugin_jars
-            .into_iter()
-            .map(|p| crate::platform::normalize_path_for_output(std::path::Path::new(&p)))
-            .collect(),
-        vmoptions_dir: crate::platform::normalize_path_for_output(&vmoptions_dir_resource),
-        config_dir: crate::platform::normalize_path_for_output(&config_dir_resource),
+        plugin_jars,
+        vmoptions_dir: crate::platform::normalize_path_for_output(
+            &state.agent_root.join("vmoptions"),
+        ),
+        config_dir: crate::platform::normalize_path_for_output(
+            &state.agent_root.join("config-jetbrains"),
+        ),
         os: crate::platform::Os::current(),
         app_version: app.package_info().version.to_string(),
     })
@@ -253,35 +346,15 @@ pub fn get_workspace_info(
 
 #[tauri::command]
 pub fn reveal_in_finder(path: String) -> Result<(), String> {
-    let p = PathBuf::from(&path);
-    let (cmd, args) = crate::platform::open_in_explorer_cmd(&p)
+    let p = std::path::PathBuf::from(&path);
+    // 文件可能不存在（占位路径），退回到父目录
+    let target = if p.exists() { p.clone() } else { p.parent().map(|x| x.to_path_buf()).unwrap_or(p) };
+    let (cmd, args) = crate::platform::open_in_explorer_cmd(&target)
         .ok_or_else(|| "no explorer command for this OS".to_string())?;
     std::process::Command::new(cmd)
         .args(args)
         .spawn()
         .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn pick_jar_file(app: AppHandle) -> Result<Option<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
-    use std::sync::mpsc;
-    let (tx, rx) = mpsc::channel();
-    app.dialog()
-        .file()
-        .add_filter("Java archive", &["jar"])
-        .pick_file(move |result| {
-            let _ = tx.send(result);
-        });
-    let result = rx.recv().map_err(|e| e.to_string())?;
-    Ok(result.and_then(|f| f.into_path().ok().map(|p| p.display().to_string())))
-}
-
-#[tauri::command]
-pub fn set_active_jar_path(_state: State<'_, WorkspaceState>, _path: String) -> Result<(), String> {
-    // Future hook: allow the user to swap the active lib.jar path. For now we
-    // always use the workspace's `lib.jar`, so this is a stub.
     Ok(())
 }
 
@@ -299,4 +372,10 @@ pub fn clear_log_history() -> Result<(), String> {
 #[tauri::command]
 pub fn app_version(app: AppHandle) -> Result<String, String> {
     Ok(app.package_info().version.to_string())
+}
+
+// 保留 workspace 引用避免 unused import
+#[allow(unused)]
+fn _touch_workspace() {
+    let _ = workspace::WORKDIR_NAME;
 }

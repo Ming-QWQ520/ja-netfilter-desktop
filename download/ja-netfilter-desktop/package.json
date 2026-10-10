@@ -1,6 +1,6 @@
 {
   "name": "ja-netfilter-desktop",
-  "version": "0.1.6",
+  "version": "0.1.0",
   "private": true,
   "description": "Desktop GUI for ja-netfilter — manage JetBrains javaagent, plugins, configs and vmoptions",
   "type": "module",
@@ -21,8 +21,7 @@
     "@tauri-apps/plugin-process": "^2.0.0",
     "@tauri-apps/plugin-shell": "^2.0.1",
     "pinia": "^2.2.4",
-    "vue": "^3.5.12",
-    "vue-router": "^4.4.5"
+    "vue": "^3.5.12"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",

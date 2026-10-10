@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 
 import { api } from "@/api";
-import type { ProductInfo } from "@/types";
+import type { InstallResult, ProductInfo } from "@/types";
 
 export const useProductsStore = defineStore("products", () => {
   const items = ref<ProductInfo[]>([]);
@@ -32,24 +32,39 @@ export const useProductsStore = defineStore("products", () => {
     }
   }
 
-  async function install(id: string, licenseName?: string) {
-    await api.installProduct(id, licenseName);
+  /** 安装单个产品（含自定义授权），返回后端结果。 */
+  async function install(
+    id: string,
+    licenseName?: string,
+    licenseExpiry?: string,
+  ): Promise<InstallResult> {
+    const result = await api.installProduct(id, licenseName, licenseExpiry);
     await refreshOne(id);
+    return result;
   }
 
-  async function uninstall(id: string) {
-    await api.uninstallProduct(id);
+  /** 卸载单个产品。 */
+  async function uninstall(id: string): Promise<InstallResult> {
+    const result = await api.uninstallProduct(id);
     await refreshOne(id);
+    return result;
   }
 
-  async function installAll(licenseName?: string) {
-    await api.installAllProducts(licenseName);
+  /** 全部安装（单次后端调用覆盖所有产品，含自定义授权）。 */
+  async function installAll(
+    licenseName?: string,
+    licenseExpiry?: string,
+  ): Promise<InstallResult[]> {
+    const results = await api.installAllProducts(licenseName, licenseExpiry);
     await refreshAll();
+    return results;
   }
 
-  async function uninstallAll() {
-    await api.uninstallAllProducts();
+  /** 全部卸载。 */
+  async function uninstallAll(): Promise<InstallResult[]> {
+    const results = await api.uninstallAllProducts();
     await refreshAll();
+    return results;
   }
 
   return {

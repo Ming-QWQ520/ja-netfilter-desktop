@@ -1,10 +1,15 @@
 //! JetBrains 产品定义与运行时检测。
-
-use std::path::PathBuf;
+//!
+//! v0.2.0 修复：旧版 `detect_one` 走的是一条从未生效的路径链
+//! （`JetBrains/<id>/idea.vmoptions` 这种不存在的目录），导致界面显示的
+//! 安装状态与真实 IDE vmoptions 脱节。现在检测走与安装器完全相同的
+//! `.home` 发现链（locate::find_product_locations）：
+//!   Roaming 配置目录 vmoptions > IDE 安装目录 bin/*.vmoptions。
 
 use serde::{Deserialize, Serialize};
 
-use crate::platform::{self};
+use crate::locate;
+use crate::platform;
 use crate::workspace::WorkspaceState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,23 +17,26 @@ pub struct ProductInfo {
     pub id: String,
     pub name: String,
     pub env_var: String,
+    /// IDE 实际读取的主 vmoptions（Roaming > bin），未检测到为 null。
     pub vmoptions_path: Option<String>,
+    /// 全部发现的 vmoptions 文件。
+    pub vmoptions_paths: Vec<String>,
     pub vmoptions_source: VmoptionsSource,
     pub javaagent_installed: bool,
     pub javaagent_target: Option<String>,
     pub vmoptions_preview: Option<String>,
+    /// 是否检测到 IDE（有 .home / 配置目录）。
+    pub ide_found: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VmoptionsSource {
-    /// 通过环境变量（`*_VM_OPTIONS`）解析。
-    Env,
-    /// 用户默认配置目录中找到。
+    /// 用户配置目录（Roaming，IDE 优先读取）。
     User,
-    /// 工作区副本（用户修改过的 vmoptions）。
-    Workspace,
-    /// 项目自带模板（只读，未修改）。
+    /// IDE 安装目录 bin 下的 vmoptions。
+    Ide,
+    /// agent 安全目录中的模板。
     Template,
     /// 任何地方都不存在。
     Missing,
@@ -38,10 +46,9 @@ impl VmoptionsSource {
     #[allow(dead_code)]
     pub fn label(self) -> &'static str {
         match self {
-            VmoptionsSource::Env => "环境变量",
             VmoptionsSource::User => "用户配置",
-            VmoptionsSource::Workspace => "工作区副本",
-            VmoptionsSource::Template => "项目模板",
+            VmoptionsSource::Ide => "IDE 安装目录",
+            VmoptionsSource::Template => "内置模板",
             VmoptionsSource::Missing => "缺失",
         }
     }
@@ -62,106 +69,83 @@ pub fn detect_all(state: &WorkspaceState) -> Vec<ProductInfo> {
 
 pub fn detect_one(id: &str, name: &str, state: &WorkspaceState) -> ProductInfo {
     let env_var = platform::env_var_name(id);
-    let workdir = state.workdir();
-    let resource_root = state.resource_root();
+    let locations = locate::find_product_locations(id);
 
-    // 查找 vmoptions 文件：环境变量 → 用户默认 → 工作区副本 → 项目自带模板
-    let (path, source) = match find_vmoptions(id, &workdir, &resource_root) {
-        Some(p) => {
-            let is_env = std::env::var(&env_var)
-                .map(|v| std::path::Path::new(&v) == p.as_path())
-                .unwrap_or(false);
-            let is_workspace = p.starts_with(&workdir);
-            let is_bundled = p.starts_with(&resource_root);
-            let source = if is_env {
-                VmoptionsSource::Env
-            } else if is_workspace {
-                VmoptionsSource::Workspace
-            } else if is_bundled {
-                VmoptionsSource::Template
-            } else {
-                VmoptionsSource::User
-            };
-            (Some(p), source)
-        }
-        None => (None, VmoptionsSource::Missing),
-    };
-
-    let mut vmoptions_preview: Option<String> = None;
-    let mut javaagent_installed = false;
-    let mut javaagent_target: Option<String> = None;
-
-    if let Some(ref p) = path {
-        if let Ok(content) = std::fs::read_to_string(p) {
-            vmoptions_preview = Some(content.clone());
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if trimmed.starts_with("-javaagent:") && trimmed.contains("ja-netfilter") {
-                    javaagent_installed = true;
-                    javaagent_target = Some(trimmed.to_string());
-                    break;
-                }
-                if trimmed.starts_with("-javaagent:") && trimmed.ends_with("=jetbrains") {
-                    javaagent_installed = true;
-                    javaagent_target = Some(trimmed.to_string());
-                    break;
-                }
+    // 汇总所有 vmoptions（Roaming 优先）
+    let mut ordered: Vec<std::path::PathBuf> = Vec::new();
+    let mut ide_found = !locations.is_empty();
+    for loc in &locations {
+        for p in loc.roaming_vmoptions.iter().chain(loc.bin_vmoptions.iter()) {
+            if !ordered.contains(p) {
+                ordered.push(p.clone());
             }
         }
     }
+
+    // 确定来源
+    let primary = ordered.first().cloned();
+    let source = if let Some(ref p) = primary {
+        let in_roaming = locations
+            .iter()
+            .any(|l| l.roaming_vmoptions.contains(p));
+        if in_roaming {
+            VmoptionsSource::User
+        } else {
+            VmoptionsSource::Ide
+        }
+    } else {
+        // 未检测到 IDE：回退 agent 安全目录里的模板（供编辑参考）
+        ide_found = false;
+        let tpl = state.agent_root.join("vmoptions").join(format!("{}.vmoptions", id));
+        if tpl.exists() {
+            ordered.push(tpl);
+            VmoptionsSource::Template
+        } else {
+            VmoptionsSource::Missing
+        }
+    };
+
+    // 状态读取：任何一个文件含 agent 行即视为已安装；
+    // 预览优先展示 Roaming/主文件内容。
+    let mut javaagent_installed = false;
+    let mut javaagent_target: Option<String> = None;
+    let mut vmoptions_preview: Option<String> = None;
+
+    for p in &ordered {
+        let Ok(content) = std::fs::read_to_string(p) else {
+            continue;
+        };
+        if vmoptions_preview.is_none() {
+            vmoptions_preview = Some(content.clone());
+        }
+        for line in content.lines() {
+            let t = line.trim();
+            if t.starts_with("-javaagent:") && (t.contains("ja-netfilter") || t.ends_with("=jetbrains")) {
+                javaagent_installed = true;
+                javaagent_target = Some(t.to_string());
+                break;
+            }
+        }
+        if javaagent_installed {
+            break;
+        }
+    }
+
+    let paths_display: Vec<String> = ordered
+        .iter()
+        .map(|p| platform::normalize_path_for_output(p))
+        .collect();
 
     ProductInfo {
         id: id.to_string(),
         name: name.to_string(),
         env_var,
-        vmoptions_path: path.map(|p| platform::normalize_path_for_output(&p)),
+        vmoptions_path: paths_display.first().cloned(),
+        vmoptions_paths: paths_display,
         vmoptions_source: source,
         javaagent_installed,
         javaagent_target,
         vmoptions_preview,
+        ide_found,
     }
-}
-
-/// 查找 vmoptions 文件：环境变量 → 用户默认 → 工作区副本 → 项目自带模板。
-fn find_vmoptions(
-    product_id: &str,
-    workdir: &std::path::Path,
-    resource_root: &std::path::Path,
-) -> Option<PathBuf> {
-    let env_key = format!("{}_VM_OPTIONS", product_id.to_uppercase());
-    if let Ok(val) = std::env::var(&env_key) {
-        let p = PathBuf::from(&val);
-        if p.exists() {
-            return Some(p);
-        }
-    }
-
-    if let Some(path) = crate::platform::user_default_vmoptions(product_id) {
-        if path.exists() {
-            return Some(path);
-        }
-    }
-
-    // 工作区副本（用户修改过的）
-    let workspace_copy = workdir
-        .join("vmoptions")
-        .join(format!("{}.vmoptions", product_id));
-    if workspace_copy.exists() {
-        return Some(workspace_copy);
-    }
-
-    // 项目自带模板（只读）
-    let template = resource_root
-        .join("vmoptions")
-        .join(format!("{}.vmoptions", product_id));
-    if template.exists() {
-        return Some(template);
-    }
-
-    None
-}
-
-/// 项目自带 lib.jar 的路径（始终从安装目录加载，不复制到工作区）。
-pub fn bundled_jar_path(resource_root: &std::path::Path) -> PathBuf {
-    resource_root.join("lib.jar")
 }

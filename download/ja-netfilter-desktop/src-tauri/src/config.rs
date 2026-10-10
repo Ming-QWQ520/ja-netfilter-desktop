@@ -1,9 +1,7 @@
-//! ja-netfilter 插件配置文件（`dns.conf`、`power.conf`、`url.conf`）。
+//! ja-netfilter 插件配置文件（`dns.conf`、`power.conf`、`url.conf` 等）。
 //!
-//! 读时优先工作区副本，回退项目自带模板。写时 copy-on-write 到工作区。
-//! 不再预先复制任何文件到工作区。
-
-use std::path::PathBuf;
+//! v0.1.0：读写目标为应用自带资源目录内的 `config-jetbrains/`
+//! （agent 就地引用，JVM 实际加载的就是这份，无需任何复制）。
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -17,47 +15,46 @@ pub struct ConfigFile {
     pub size: u64,
 }
 
-/// 项目自带的插件配置文件清单。
-/// 注意：目录名为 `config-jetbrains`，因为 -javaagent:...=jetbrains 参数会让
-/// ja-netfilter.jar 查找 `config-jetbrains/`、`plugins-jetbrains/`、`logs-jetbrains/`。
-pub const CONFIG_FILES: &[&str] = &[
-    "config-jetbrains/dns.conf",
-    "config-jetbrains/power.conf",
-    "config-jetbrains/url.conf",
-];
+/// 配置子目录名（与 `-javaagent:...=jetbrains` 参数对应）。
+pub const CONFIG_SUBDIR: &str = "config-jetbrains";
 
-/// 枚举配置文件。优先工作区副本，回退项目自带模板。
+/// 枚举配置文件：以 agent_root 内实际存在的 *.conf 为准
+/// （dns/power/url 是内置项，env/native 等由 ckey 流程下载的也可显示）。
 pub fn list(state: &WorkspaceState) -> Result<Vec<ConfigFile>> {
+    let dir = state.agent_root.join(CONFIG_SUBDIR);
     let mut out = Vec::new();
-    for rel in CONFIG_FILES {
-        let workdir_copy = state.workdir().join(rel);
-        let bundled = state.resource_root().join(rel);
-        let size = if workdir_copy.exists() {
-            workdir_copy.metadata().map(|m| m.len()).unwrap_or(0)
-        } else if bundled.exists() {
-            bundled.metadata().map(|m| m.len()).unwrap_or(0)
-        } else {
-            continue;
-        };
-        out.push(ConfigFile {
-            name: rel.rsplit('/').next().unwrap_or(rel).to_string(),
-            relative_path: rel.to_string(),
-            size,
-        });
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("conf") {
+                let name = path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let size = path.metadata().map(|m| m.len()).unwrap_or(0);
+                out.push(ConfigFile {
+                    name: name.clone(),
+                    relative_path: format!("{}/{}", CONFIG_SUBDIR, name),
+                    size,
+                });
+            }
+        }
     }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(out)
 }
 
-/// 读取配置文件：优先工作区副本，回退项目自带模板。
+/// 读取配置文本。
 pub fn read_text(state: &WorkspaceState, relative_path: &str) -> Result<String> {
     workspace::read_resource(state, relative_path)
 }
 
-/// 写入配置文件：copy-on-write 到工作区，再修改工作区副本。
+/// 写入配置文本。
 pub fn write_text(
     state: &WorkspaceState,
     relative_path: &str,
     content: &str,
-) -> Result<PathBuf> {
+) -> Result<std::path::PathBuf> {
     workspace::write_resource(state, relative_path, content)
 }

@@ -14,8 +14,9 @@ let counter = 0;
 function push(kind: ToastKind, text: string) {
   const id = ++counter;
   items.value.push({ id, kind, text });
-  // Auto-dismiss after 4.5s
-  setTimeout(() => dismiss(id), 4500);
+  // MD3 snackbar 自动关闭（错误保留更久）
+  const ttl = kind === "error" ? 6500 : 3800;
+  setTimeout(() => dismiss(id), ttl);
 }
 
 function dismiss(id: number) {
