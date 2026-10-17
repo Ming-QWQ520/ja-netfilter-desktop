@@ -25,7 +25,7 @@ const tabs: { id: TabId; labelKey: string; icon: string }[] = [
 function iconSvg(name: string): string {
   switch (name) {
     case "grid":
-      return `<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>`;
+      return `<rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/>`;
     case "sliders":
       return `<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2" class="knob"/><circle cx="15" cy="12" r="2" class="knob"/><circle cx="7" cy="17" r="2" class="knob"/>`;
     case "terminal":
@@ -99,9 +99,9 @@ const moonIcon = `<path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/>`
   display: flex;
   align-items: center;
   gap: 18px;
-  height: 48px;
-  padding: 0 14px;
-  background: var(--md-surface-container);
+  height: 54px;
+  padding: 0 16px;
+  background: var(--md-surface-container-lowest);
   flex-shrink: 0;
   border-bottom: 1px solid var(--md-outline-variant);
 }
@@ -109,23 +109,25 @@ const moonIcon = `<path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/>`
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
 .brand-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--md-corner-s);
-  background: var(--md-primary);
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--md-primary), color-mix(in srgb, var(--md-primary) 72%, #38bdf8));
   color: var(--md-on-primary);
   font-weight: 700;
-  font-size: 11px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
   display: grid;
   place-content: center;
   flex-shrink: 0;
+  box-shadow: 0 2px 6px var(--md-primary-soft);
 }
 .brand-text {
-  line-height: 1.15;
+  line-height: 1.2;
   min-width: 0;
 }
 .brand-name {
@@ -136,17 +138,20 @@ const moonIcon = `<path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/>`
 .brand-sub {
   font-size: 10px;
   color: var(--md-on-surface-variant);
+  letter-spacing: 0.03em;
 }
 
 .md-tabs {
   flex: 1;
   justify-content: center;
+  max-width: 460px;
+  margin: 0 auto;
 }
 
 .bar-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .content {

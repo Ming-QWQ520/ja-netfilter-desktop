@@ -163,7 +163,7 @@ onMounted(() => settings.refresh());
 .tab-panel {
   height: 100%;
   overflow: auto;
-  padding: 14px 16px 24px;
+  padding: 16px 20px 28px;
 }
 
 .settings-col {
@@ -171,13 +171,16 @@ onMounted(() => settings.refresh());
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .settings-col h3 {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   font-size: 14px;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .license-row {
@@ -194,11 +197,11 @@ onMounted(() => settings.refresh());
 }
 
 .md-input {
-  height: 32px;
-  padding: 0 10px;
+  height: 34px;
+  padding: 0 12px;
   border: none;
-  border-radius: var(--md-corner-xs);
-  background: var(--md-surface-container-highest);
+  border-radius: var(--md-corner-s);
+  background: var(--md-surface-container-lowest);
   color: var(--md-on-surface);
   font: 400 12.5px/1.4 var(--md-mono);
   outline: none;
@@ -207,11 +210,11 @@ onMounted(() => settings.refresh());
   width: 100%;
 }
 .md-input:focus {
-  box-shadow: inset 0 0 0 2px var(--md-primary);
+  box-shadow: inset 0 0 0 1px var(--md-primary), 0 0 0 3px var(--md-primary-soft);
 }
 
 .hint {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   font-size: 11.5px;
   color: var(--md-on-surface-variant);
   line-height: 1.55;
@@ -230,8 +233,11 @@ onMounted(() => settings.refresh());
   grid-template-columns: 96px 1fr auto auto;
   gap: 8px;
   align-items: center;
-  padding: 5px 0;
+  padding: 6px 0;
   min-width: 0;
+}
+.path-row + .path-row {
+  border-top: 1px dashed var(--md-outline-variant);
 }
 .path-label {
   font-size: 12px;
@@ -242,16 +248,10 @@ onMounted(() => settings.refresh());
   font-size: 11.5px;
   background: var(--md-surface-container);
   border-radius: var(--md-corner-xs);
-  padding: 5px 8px;
+  padding: 6px 10px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.md-chip--xs {
-  height: 20px;
-  padding: 0 7px;
-  font-size: 11px;
-  flex-shrink: 0;
 }
 
 .about-row {

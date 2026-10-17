@@ -2,7 +2,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 
-JetBrains ja-netfilter 桌面管理器 —— Tauri 2 + Vue 3 + Material Design 3。
+JetBrains ja-netfilter 桌面管理器 —— Tauri 2 + Vue 3，清新简洁风单页 UI。
 
 检测本机 JetBrains IDE，一键写入/移除 `-javaagent`、清理环境变量，并按**自定义授权信息**生成授权文件。核心安装逻辑与 `ckey_script.ps1`（CodeKey Run）语义一致，并以跨平台 GUI 呈现。
 
@@ -12,7 +12,7 @@ JetBrains ja-netfilter 桌面管理器 —— Tauri 2 + Vue 3 + Material Design 
 - **安全安装**：安装前剥离 vmoptions 中全部旧 `-javaagent:` 行（含历史遗留 `-Dja.netfilter.name=` 行）；删除（而非设置）User + Machine 两作用域的 `<PRODUCT>_VM_OPTIONS` 环境变量并广播 `WM_SETTINGCHANGE` —— 从根上治愈 `processing of -javaagent failed` 崩溃。
 - **自定义授权**：授权名称（回车/留空默认 `Ming`）与到期时间（回车/留空默认 `2099-12-31`，`yyyy-MM-dd`）随安装生成 `<prd>.key` 授权文件，写入各 IDE 用户配置目录（`%APPDATA%\JetBrains\<Product><ver>\` 等），单个产品失败仅告警不中断。
 - **真实定位**：经 `%LOCALAPPDATA%\JetBrains\*\.home` 发现链定位 IDE 真实 vmoptions（bin 递归 + Roaming 配置目录），检测状态与 IDE 实际读取的文件一致。
-- **MD3 单页 UI**：总览 / 配置 / 日志 / 设置四个 Tab，明暗双主题（跟随系统）、中英双语、实时日志事件流。
+- **清新简洁单页 UI**：总览 / 配置 / 日志 / 设置四个 Tab，青绿主色扁平设计、明暗双主题（跟随系统）、中英双语、实时日志事件流。
 
 ## 触发 Actions 编译发布
 
@@ -49,11 +49,11 @@ pnpm tauri:build    # 产出安装包（src-tauri/target/release/bundle/）
 
 ```
 ├── .github/workflows/     # ci.yml（推送检查）+ release.yml（tag 发布）
-├── src/                   # Vue 3 前端（MD3 单页 + Pinia + i18n）
+├── src/                   # Vue 3 前端（清新简洁单页 + Pinia + i18n）
 │   ├── components/        # Overview / Config / Logs / Settings 四个 Tab
 │   ├── stores/            # products / license / ui / logs / toast / confirm
 │   ├── i18n/              # zh/en 双语字典（ckey_script 同款 key 结构）
-│   └── styles/md3.css     # Material Design 3 设计系统
+│   └── styles/md3.css     # Fresh Mint 设计系统（清新简洁风令牌）
 └── src-tauri/
     ├── src/
     │   ├── installer.rs   # 安装/卸载编排（Windows→PS，Unix→原生）

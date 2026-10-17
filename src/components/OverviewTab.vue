@@ -114,12 +114,20 @@ onMounted(refreshAll);
     <!-- 工具行：状态 + 批量操作 -->
     <div class="toolbar">
       <div class="stats">
-        <span class="md-chip md-chip--success">
-          {{ t("stat_installed") }} {{ installedCount }} / {{ store.items.length }}
+        <span class="stat-pill">
+          <span class="stat-dot ok" />
+          {{ t("stat_installed") }}
+          <b class="mono">{{ installedCount }} / {{ store.items.length }}</b>
         </span>
-        <span class="md-chip md-chip--primary">{{ t("stat_detected") }} {{ detectedCount }}</span>
-        <span class="md-chip" :class="agentOk ? 'md-chip--success' : 'md-chip--error'">
-          {{ t("stat_agent_ready") }} {{ agentOk ? "✓" : "✕" }}
+        <span class="stat-pill">
+          <span class="stat-dot info" />
+          {{ t("stat_detected") }}
+          <b class="mono">{{ detectedCount }}</b>
+        </span>
+        <span class="stat-pill" :class="agentOk ? 'is-ok' : 'is-bad'">
+          <span class="stat-dot" :class="agentOk ? 'ok' : 'bad'" />
+          {{ t("stat_agent_ready") }}
+          <b class="mono">{{ agentOk ? "✓" : "✕" }}</b>
         </span>
       </div>
       <div class="actions">
@@ -150,7 +158,7 @@ onMounted(refreshAll);
       <article
         v-for="p in store.items"
         :key="p.id"
-        class="md-card md-card--elevated product-card"
+        class="md-card product-card"
         :class="{ 'is-installed': p.javaagent_installed, 'is-dim': !p.ide_found && !p.javaagent_installed }"
       >
         <header class="pc-head">
@@ -216,7 +224,7 @@ onMounted(refreshAll);
 .tab-panel {
   height: 100%;
   overflow: auto;
-  padding: 14px 16px 24px;
+  padding: 16px 20px 28px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -232,8 +240,45 @@ onMounted(refreshAll);
 }
 .stats {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
+}
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--md-corner-full);
+  background: var(--md-surface-container-lowest);
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+  font: 500 12px/1 var(--md-font);
+  color: var(--md-on-surface-variant);
+}
+.stat-pill b {
+  font-weight: 600;
+  color: var(--md-on-surface);
+}
+.stat-pill.is-ok b {
+  color: var(--md-success);
+}
+.stat-pill.is-bad b {
+  color: var(--md-error);
+}
+.stat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.stat-dot.ok {
+  background: var(--md-success);
+}
+.stat-dot.info {
+  background: var(--md-tertiary);
+}
+.stat-dot.bad {
+  background: var(--md-error);
 }
 .actions {
   display: flex;
@@ -244,23 +289,26 @@ onMounted(refreshAll);
 .grid-products {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 .product-skeleton {
-  height: 120px;
+  height: 124px;
 }
 
 .product-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: 9px;
+  padding: 14px;
 }
-.product-card.is-installed {
-  border-left: 3px solid var(--md-success);
+.product-card:hover {
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant), var(--md-shadow-1);
+}
+.product-card.is-installed:hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--md-success) 35%, transparent), var(--md-shadow-1);
 }
 .product-card.is-dim {
-  opacity: 0.7;
+  opacity: 0.72;
 }
 
 .pc-head {
@@ -285,6 +333,7 @@ onMounted(refreshAll);
 }
 .pc-dot.ok {
   background: var(--md-success);
+  box-shadow: 0 0 0 3px var(--md-success-container);
 }
 .pc-dot.idle {
   background: var(--md-outline);
@@ -297,12 +346,16 @@ onMounted(refreshAll);
 .pc-vmopts {
   font-size: 11.5px;
   line-height: 1.45;
+  padding: 5px 9px;
+  border-radius: var(--md-corner-xs);
+  background: var(--md-surface-container);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .pc-agent {
   color: var(--md-success);
+  background: var(--md-success-container);
 }
 .pc-vmopts {
   color: var(--md-on-surface-variant);
@@ -322,7 +375,7 @@ onMounted(refreshAll);
 }
 
 .section-head {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .section-head h3 {
   margin: 0;
@@ -330,7 +383,7 @@ onMounted(refreshAll);
   font-weight: 600;
 }
 .section-head p {
-  margin: 2px 0 0;
+  margin: 3px 0 0;
   font-size: 12px;
   color: var(--md-on-surface-variant);
   line-height: 1.5;
@@ -340,8 +393,9 @@ onMounted(refreshAll);
 .plugin-list {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--md-outline-variant);
-  border-radius: var(--md-corner-m);
+  background: var(--md-surface-container-lowest);
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+  border-radius: var(--md-corner-l);
   overflow: hidden;
 }
 .plugin-row {
@@ -349,14 +403,15 @@ onMounted(refreshAll);
   grid-template-columns: 120px 72px 1fr;
   gap: 12px;
   align-items: center;
-  padding: 7px 12px;
+  padding: 8px 14px;
   font-size: 12px;
+  transition: background-color var(--md-dur-short);
 }
 .plugin-row + .plugin-row {
   border-top: 1px solid var(--md-outline-variant);
 }
 .plugin-row:hover {
-  background: var(--md-surface-container);
+  background: var(--md-surface-container-low);
 }
 .pl-name {
   font-weight: 600;

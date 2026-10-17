@@ -155,10 +155,10 @@ watch(
 .tab-panel {
   height: 100%;
   overflow: hidden;
-  padding: 14px 16px 16px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .logs-toolbar {
@@ -213,9 +213,10 @@ watch(
   text-align: left;
   font-size: 12px;
   color: var(--md-on-surface-variant);
-  background: var(--md-surface-container);
-  border-radius: var(--md-corner-xs);
-  padding: 4px 8px;
+  background: var(--md-surface-container-lowest);
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+  border-radius: var(--md-corner-full);
+  padding: 4px 12px;
 }
 
 .log-stream {
@@ -224,20 +225,21 @@ watch(
   overflow: auto;
   background: var(--md-surface-container-lowest);
   box-shadow: inset 0 0 0 1px var(--md-outline-variant);
-  border-radius: var(--md-corner-m);
-  padding: 10px;
+  border-radius: var(--md-corner-l);
+  padding: 12px;
   font-size: 12px;
-  line-height: 1.65;
+  line-height: 1.7;
 }
 .log-line {
   display: grid;
   grid-template-columns: 140px 62px 1fr;
   gap: 10px;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: var(--md-corner-xs);
+  transition: background-color var(--md-dur-short);
 }
 .log-line:hover {
-  background: var(--md-surface-container);
+  background: var(--md-surface-container-low);
 }
 .log-ts {
   color: var(--md-outline);

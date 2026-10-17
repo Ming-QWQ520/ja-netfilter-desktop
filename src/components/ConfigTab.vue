@@ -273,16 +273,16 @@ onMounted(async () => {
 .tab-panel {
   height: 100%;
   overflow: hidden;
-  padding: 14px 16px 16px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .config-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
 }
@@ -291,17 +291,18 @@ onMounted(async () => {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 230px 1fr;
-  gap: 10px;
+  grid-template-columns: 240px 1fr;
+  gap: 12px;
 }
 
 .side-list {
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 4px;
-  background: var(--md-surface-container);
+  gap: 2px;
+  padding: 8px;
+  background: var(--md-surface-container-lowest);
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
   border-radius: var(--md-corner-l);
 }
 .side-item {
@@ -336,10 +337,13 @@ onMounted(async () => {
   background: var(--md-outline-variant);
 }
 .side-desc {
-  margin: 8px 12px 12px;
+  margin: 8px 6px 6px;
+  padding: 8px 10px;
   font-size: 11.5px;
   color: var(--md-on-surface-variant);
-  line-height: 1.5;
+  line-height: 1.55;
+  background: var(--md-surface-container);
+  border-radius: var(--md-corner-s);
 }
 
 .editor-col {
