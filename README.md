@@ -1,6 +1,8 @@
 # ja-netfilter-desktop
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-000000?style=flat&logo=rust&logoColor=white)](src-tauri)
+[![Vue 3](https://img.shields.io/badge/Vue%203-4FC08D?style=flat&logo=vuedotjs&logoColor=white)](src)
 
 JetBrains ja-netfilter 桌面管理器 —— Tauri 2 + Vue 3，清新简洁风单页 UI。
 

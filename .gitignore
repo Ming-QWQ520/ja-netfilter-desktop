@@ -23,6 +23,7 @@ src-tauri/gen/schemas/
 *.sw?
 
 # Logs
+logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -31,3 +32,6 @@ pnpm-debug.log*
 # Env
 .env
 .env.local
+
+# Screenshots
+screenshot/
