@@ -3,6 +3,7 @@
   "version": "0.1.1",
   "private": true,
   "description": "Desktop GUI for ja-netfilter — manage JetBrains javaagent, plugins, configs and vmoptions",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",

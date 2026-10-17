@@ -1,5 +1,7 @@
 # ja-netfilter-desktop
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+
 JetBrains ja-netfilter 桌面管理器 —— Tauri 2 + Vue 3 + Material Design 3。
 
 检测本机 JetBrains IDE，一键写入/移除 `-javaagent`、清理环境变量，并按**自定义授权信息**生成授权文件。核心安装逻辑与 `ckey_script.ps1`（CodeKey Run）语义一致，并以跨平台 GUI 呈现。
@@ -88,6 +90,14 @@ powershell -File src-tauri/src/scripts/win_core.ps1 `
 > 会把数组静默空格 join 成字符串。脚本内已用独立变量 `$productList` 规避，
 > 修改时请勿引入与参数同名（任意大小写）的数组变量。
 
-## 许可与声明
+## 开源协议
+
+本项目以 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0）开源，Copyright © 2026 Ming-QWQ520。
+
+你可以在遵守 AGPL-3.0 的前提下自由使用、修改和分发本项目。分发修改后的版本，或以网络服务方式向用户提供本项目（或其修改版本）时，须按协议要求向用户提供对应的完整源代码。完整条款请阅读 [LICENSE](LICENSE)。
+
+## 声明
 
 ja-netfilter 是通用 Java agent 框架，可用于调试、监控和扩展基于 JVM 的应用程序。请仅在您拥有合法授权的软件上使用；绕过付费授权可能违反软件服务条款及当地法律法规。
+
+> **本项目仅做学习研究，严禁任何倒卖、盈利或违法行为。**
